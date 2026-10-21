@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import fitz
+
+from retainpdf_pipeline.render.policy.formula_guard import split_rect_around_guards
+from retainpdf_pipeline.render.policy import item_has_formula_region
+from retainpdf_pipeline.render.policy import item_is_marked_non_translated
+from retainpdf_pipeline.render.policy import item_render_source_text
+from retainpdf_pipeline.render.policy import item_will_render_translated_overlay
+
 from retainpdf_pipeline.render.semantics.item_view import block_kind
 from retainpdf_pipeline.render.semantics.item_view import is_bodylike_block
 from retainpdf_pipeline.render.semantics.item_view import is_caption_like_block
@@ -78,4 +86,29 @@ def _has_formula_pressure(item: dict) -> bool:
     return "$" in text or "\\frac" in text or "\\sqrt" in text
 
 
-__all__ = ["expanded_cover_bbox"]
+def protect_source_cover_regions(items: list[dict]) -> None:
+    """Keep source-preserved regions out of both cleanup and overlay fills."""
+    from retainpdf_pipeline.render.layout.typography.geometry import cover_bbox
+
+    guards = [
+        fitz.Rect(item["bbox"])
+        for item in items
+        if len(item.get("bbox", [])) == 4
+        and (
+            (item_is_marked_non_translated(item) and item_render_source_text(item))
+            or (item_has_formula_region(item) and not item_will_render_translated_overlay(item))
+        )
+    ]
+    for item in items:
+        item.pop("_render_cover_rects", None)
+        if len(item.get("bbox", [])) != 4:
+            continue
+        rect = fitz.Rect(cover_bbox(item))
+        if item_will_render_translated_overlay(item) and any(rect.intersects(guard) for guard in guards):
+            item["_render_cover_rects"] = [
+                [round(value, 3) for value in fragment]
+                for fragment in split_rect_around_guards(rect, guards)
+            ]
+
+
+__all__ = ["expanded_cover_bbox", "protect_source_cover_regions"]

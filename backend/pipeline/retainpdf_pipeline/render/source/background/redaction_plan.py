@@ -34,7 +34,8 @@ def redaction_items_from_blocks(
             raw_index = block.block_id.removeprefix("item-")
             if raw_index.isdigit():
                 source_item = source_items_by_index.get(int(raw_index), {})
-        redaction_items.append(redaction_item_from_render_block(block, source_item))
+        item = redaction_item_from_render_block(block, source_item)
+        redaction_items.extend(split_cover_redaction_item(item, block.cover_rects))
     return redaction_items
 
 
@@ -54,3 +55,9 @@ def redaction_item_from_render_block(block: RenderBlock, source_item: dict) -> d
         "bbox": list(block.cover_bbox),
         "_render_block_id": block.block_id,
     }
+
+
+def split_cover_redaction_item(item: dict, rects: list[list[float]] | None) -> list[dict]:
+    if rects is None:
+        return [item]
+    return [{**item, "bbox": list(rect), "_source_guard_fragment": True} for rect in rects]

@@ -86,7 +86,11 @@ INTENT_RULES: tuple[IntentRule, ...] = (
             source_role=SOURCE_ROLE_BODY_TEXT,
             translation_state=translation_state_for_evidence(evidence),
             replacement_kind=REPLACEMENT_KIND_PRESERVE_SOURCE,
-            cleanup_action=CLEANUP_ACTION_NOOP,
+            cleanup_action=(
+                CLEANUP_ACTION_PROTECT_SOURCE
+                if evidence.is_marked_non_translated and evidence.source_text
+                else CLEANUP_ACTION_NOOP
+            ),
             confidence=0.9,
             reason="body_text_without_overlay",
         ),

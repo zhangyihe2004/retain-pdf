@@ -93,6 +93,8 @@ def _run_typst_compile(
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=TYPST_COMPILE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:

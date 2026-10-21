@@ -11,8 +11,8 @@ from retainpdf_pipeline.render.layout.font_fit import NON_BODY_LEADING_SIZE_ADJU
 from retainpdf_pipeline.render.layout.font_fit import cover_bbox as resolve_cover_bbox
 from retainpdf_pipeline.render.layout.font_fit import normalize_leading_em_for_font_size
 from retainpdf_pipeline.render.layout.font_fit import resolve_font_weight
-from retainpdf_pipeline.render.layout.font_fit import resolve_title_fill_max_font_size_pt
 from retainpdf_pipeline.render.layout.font_roles import is_title_like_block
+from retainpdf_pipeline.render.layout.inline_content.mode_router import build_item_render_markdown
 from retainpdf_pipeline.render.layout.payload.block_seed_body_policy import adjust_body_seed_font_size
 from retainpdf_pipeline.render.layout.payload.block_seed_body_policy import is_dense_small_box
 from retainpdf_pipeline.render.layout.payload.block_seed_body_policy import is_heavy_dense_small_box
@@ -21,6 +21,8 @@ from retainpdf_pipeline.render.layout.payload.block_seed_body_policy import rela
 from retainpdf_pipeline.render.layout.payload.block_seed_metrics import PageSeedMetrics
 from retainpdf_pipeline.render.layout.payload.body_context import page_box_area_ratio as compute_page_box_area_ratio
 from retainpdf_pipeline.render.layout.payload.metrics import fit_translated_block_metrics
+from retainpdf_pipeline.render.layout.payload.flow_text import is_flow_text
+from retainpdf_pipeline.render.layout.payload.toc_structure import render_toc_entries_for_item
 from retainpdf_pipeline.render.layout.payload.line_structure import fit_preserved_line_block_metrics
 from retainpdf_pipeline.render.layout.payload.shared import COMPACT_SCALE
 from retainpdf_pipeline.render.layout.payload.shared import HEAVY_COMPACT_RATIO
@@ -61,6 +63,13 @@ def build_seed_payload_for_item(
     raw_inner_bbox = inner_bbox(item)
     item_inner_bbox = metrics.effective_inner_bboxes.get(index, raw_inner_bbox)
     preserve_line_breaks = bool(item.get("_render_preserve_line_breaks"))
+    render_kind = "plain_line" if item.get("_force_plain_line") or is_flag_like_plain_text_block(item) else "markdown"
+    markdown_text = build_item_render_markdown(item, translated_text, formula_map)
+    toc_entries = render_toc_entries_for_item(item, translated_text)
+    fit_flow_text = is_flow_text(
+        item, translated_text, formula_map, render_kind, preserve_lines=preserve_line_breaks,
+        markdown_text=markdown_text, toc_entries=toc_entries,
+    )
     seed_line_step = max(font_size_pt * 1.02, font_size_pt * (1.0 + leading_em))
     layout_density = layout_density_ratio(
         item_inner_bbox,
@@ -131,7 +140,9 @@ def build_seed_payload_for_item(
             formula_map,
             base_font_size_pt=font_size_pt,
             base_leading_em=leading_em,
-            max_font_size_pt=resolve_title_fill_max_font_size_pt(item, font_size_pt),
+            # Blank capacity may accommodate the source-derived preference,
+            # never raise it before the preferred-width measurement.
+            max_font_size_pt=font_size_pt,
         )
         if title_fit is not None:
             font_size_pt = title_fit.font_size_pt
@@ -204,8 +215,11 @@ def build_seed_payload_for_item(
         "cover_bbox": item_cover_bbox,
         "inner_bbox": list(bbox) if use_raw_text_bbox else item_inner_bbox,
         "translated_text": translated_text,
+        "markdown_text": markdown_text,
+        "toc_entries": toc_entries,
         "formula_map": formula_map,
-        "render_kind": "plain_line" if item.get("_force_plain_line") or is_flag_like_plain_text_block(item) else "markdown",
+        "render_kind": render_kind,
+        "fit_flow_text": fit_flow_text,
         "font_size_pt": font_size_pt,
         "leading_em": leading_em,
         "first_line_indent_pt": get_render_first_line_indent_pt(item),
@@ -220,7 +234,7 @@ def build_seed_payload_for_item(
         "title_fit": title_fit,
         "preserve_line_breaks": preserve_line_breaks,
         "adjacent_collision_risk": False,
-        "adjacent_available_height_pt": None,
+        "adjacent_available_height_pt": item.get("_render_flow_max_height_pt") if fit_flow_text else None,
         "text_color": item.get("_render_text_color", (0, 0, 0)),
         "cover_fill": item.get("_render_cover_fill", (1, 1, 1)),
     }

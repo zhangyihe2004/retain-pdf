@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 from retainpdf_pipeline.translate.artifacts import TranslationDiagnosticsCollector
+from retainpdf_pipeline.translate.llm.providers.deepseek import client as deepseek_client
 from retainpdf_pipeline.translate.llm.result_payload import result_entry
 from retainpdf_pipeline.translate.llm.shared.control_context import TranslationControlContext
 from retainpdf_pipeline.translate.llm.shared.orchestration.common import single_item_http_retry_attempts
@@ -12,6 +13,9 @@ from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_runt
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_runtime import PlainTextRetryRuntime
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_validation import try_salvage_protocol_shell_error
 from retainpdf_pipeline.translate.llm.validation.errors import TranslationProtocolError
+
+
+DEEPSEEK_FALLBACK_MODEL = "deepseek-flash"
 
 
 def try_plain_text_request(
@@ -100,6 +104,46 @@ def try_raw_plain_text_fallback(
         route_path=route_prefix + ["plain_text_raw"],
         output_mode_path=["plain_text"],
     )
+
+
+def try_deepseek_plain_text_fallback(
+    item: dict,
+    *,
+    model: str,
+    request_label: str,
+    context: TranslationControlContext,
+    diagnostics: TranslationDiagnosticsCollector | None,
+    plain_timeout_s: int,
+    route_prefix: list[str],
+    runtime: PlainTextRetryRuntime,
+) -> PlainTextResult:
+    """One DeepSeek attempt, retaining Hy-MT's complete prompt and context."""
+    result = runtime.translate_plain_fn(
+        item,
+        api_key=deepseek_client.get_api_key(),
+        model=DEEPSEEK_FALLBACK_MODEL,
+        base_url=deepseek_client.DEFAULT_BASE_URL,
+        prompt_model=model,
+        request_label=f"{request_label} deepseek-fallback" if request_label else "",
+        domain_guidance=context.merged_guidance,
+        mode=context.mode,
+        target_language_name=context.target_language_name,
+        diagnostics=diagnostics,
+        timeout_s=max(120, plain_timeout_s),
+        http_retry_attempts=1,
+    )
+    result = restore_runtime_term_tokens(result, item=item)
+    result = attach_result_metadata(
+        result,
+        item=item,
+        context=context,
+        route_path=route_prefix + ["deepseek_fallback"],
+        output_mode_path=["plain_text"],
+        fallback_to="deepseek",
+    )
+    for payload in result.values():
+        payload["translation_diagnostics"]["fallback_model"] = DEEPSEEK_FALLBACK_MODEL
+    return result
 
 
 def try_protocol_shell_salvage(

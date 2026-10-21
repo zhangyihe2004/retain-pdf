@@ -74,6 +74,10 @@ def run_agent_repair_pipeline(
         item_id = str(item.get("item_id", "") or "")
         if not item_id or item_id not in translated_results:
             continue
+        if (item.get("translation_diagnostics") or {}).get("degradation_reason") == "deepseek_fallback_failed":
+            skipped += 1
+            _record_agent_repair_skip(item, "deepseek_fallback_failed", [])
+            continue
         if _should_skip_policy_keep_origin_item(item):
             skipped += 1
             _record_agent_repair_skip(item, "policy_keep_origin_item", [])

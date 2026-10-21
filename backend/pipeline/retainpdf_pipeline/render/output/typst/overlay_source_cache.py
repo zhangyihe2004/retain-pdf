@@ -9,7 +9,7 @@ from retainpdf_pipeline.foundation.config import fonts
 from retainpdf_pipeline.render.output.typst.source_builder import build_typst_book_overlay_source
 
 
-PREBUILT_SOURCE_RENDER_VERSION = "overlay_cover_fill_title_color_v13_abstract_bbox"
+PREBUILT_SOURCE_RENDER_VERSION = "overlay_cover_fill_title_color_v37_final_width"
 PAGE_SIZE_TOLERANCE_PT = 0.5
 TYPST_PAGE_SIZE_RE = re.compile(
     r"#set\s+page\(\s*width:\s*(?P<width>[0-9.]+)pt,\s*height:\s*(?P<height>[0-9.]+)pt",
@@ -146,6 +146,7 @@ def _overlay_item_fingerprint_payload(item: dict) -> dict[str, object]:
         "item_id": str(item.get("item_id") or ""),
         "bbox": _rounded_list(item.get("bbox")),
         "inner_bbox": _rounded_list(item.get("_render_inner_bbox")),
+        "available_width": _rounded_float(item.get("_render_available_width_pt")),
         "text": str(item.get("render_protected_text") or item.get("protected_translated_text") or ""),
         "source_text": str(item.get("render_source_text") or item.get("protected_source_text") or item.get("source_text") or ""),
         "formula_map": item.get("render_formula_map") or item.get("formula_map") or [],
@@ -156,6 +157,7 @@ def _overlay_item_fingerprint_payload(item: dict) -> dict[str, object]:
         "leading": _rounded_float(item.get("_render_leading_em") or item.get("leading_em")),
         "first_line_indent": _rounded_float(item.get("_render_first_line_indent_pt")),
         "cover_fill": _rounded_list(item.get("_render_cover_fill")),
+        "cover_rects": item.get("_render_cover_rects"),
         "text_color": _rounded_list(item.get("_render_text_color")),
     }
 

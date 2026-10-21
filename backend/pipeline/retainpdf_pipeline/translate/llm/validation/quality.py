@@ -164,6 +164,8 @@ def review_translation_item(
     item_id = str(item.get("item_id", "") or "")
     source_text = unit_source_text(item)
     translated_text = str(translated_result.get("translated_text", "") or "")
+    member_source_text = _member_source_text(item)
+    protected_translated_text = _protected_translated_text(item, translated_result)
     decision = normalize_decision(translated_result.get("decision", "translate"))
     issues: list[TranslationQualityIssue] = []
     diagnostics = dict(translated_result.get("translation_diagnostics") or {})
@@ -183,14 +185,50 @@ def review_translation_item(
     if decision == KEEP_ORIGIN_LABEL:
         return TranslationQualityReport(issues=issues, reviewed_item_count=1)
 
-    issues.extend(_review_translated_text(item, item_id, source_text, translated_text))
+    issues.extend(
+        _review_translated_text(
+            item,
+            item_id,
+            source_text,
+            translated_text,
+            truncation_source_text=member_source_text,
+        )
+    )
     issues.extend(
         _review_context_borrow(item, item_id, source_text, translated_text, normalized_glossary)
     )
     if not is_direct_math_mode(item):
-        issues.extend(review_placeholders(item_id, source_text, translated_text))
+        issues.extend(review_placeholders(item_id, member_source_text, protected_translated_text))
     issues.extend(_review_glossary_terms(item_id, source_text, translated_text, normalized_glossary))
     return TranslationQualityReport(issues=issues, reviewed_item_count=1)
+
+
+def _member_source_text(item: dict) -> str:
+    """Return the source text for this concrete member, not its group aggregate."""
+    return str(
+        item.get("protected_source_text")
+        or item.get("source_text")
+        or unit_source_text(item)
+        or ""
+    )
+
+
+def _protected_translated_text(item: dict, translated_result: dict[str, str]) -> str:
+    """Return the token-protected output used for placeholder validation.
+
+    The persisted page item normally carries the member-level protected output;
+    direct validator callers may instead provide it on the result payload.
+    """
+    return str(
+        translated_result.get("protected_translated_text")
+        or item.get("protected_translated_text")
+        or translated_result.get("translation_unit_protected_translated_text")
+        or item.get("translation_unit_protected_translated_text")
+        or translated_result.get("group_protected_translated_text")
+        or item.get("group_protected_translated_text")
+        or translated_result.get("translated_text")
+        or ""
+    )
 
 
 def _review_translated_text(
@@ -198,6 +236,8 @@ def _review_translated_text(
     item_id: str,
     source_text: str,
     translated_text: str,
+    *,
+    truncation_source_text: str | None = None,
 ) -> list[TranslationQualityIssue]:
     issues: list[TranslationQualityIssue] = []
     if not translated_text.strip():
@@ -228,7 +268,11 @@ def _review_translated_text(
                 message="Translated output still contains JSON/protocol shell",
             )
         )
-    truncation = _truncated_translation_issue(item_id, source_text, translated_text)
+    truncation = _truncated_translation_issue(
+        item_id,
+        truncation_source_text if truncation_source_text is not None else source_text,
+        translated_text,
+    )
     if truncation is not None:
         issues.append(truncation)
     context_bleed = _context_bleed_leaked_math(item, source_text, translated_text)

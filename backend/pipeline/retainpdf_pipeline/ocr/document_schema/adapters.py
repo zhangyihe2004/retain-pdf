@@ -10,6 +10,7 @@ from retainpdf_pipeline.ocr.document_schema.providers import PROVIDER_GENERIC_FL
 from retainpdf_pipeline.ocr.document_schema.providers import PROVIDER_MINERU
 from retainpdf_pipeline.ocr.document_schema.providers import PROVIDER_MINERU_CONTENT_LIST_V2
 from retainpdf_pipeline.ocr.document_schema.providers import PROVIDER_PADDLE
+from retainpdf_pipeline.ocr.document_schema.providers import PROVIDER_DOTS_MOCR
 from retainpdf_pipeline.ocr.document_schema.validator import build_validation_report
 
 AdapterBuilder = Callable[[dict, str, Path, str], dict]
@@ -72,11 +73,25 @@ def _build_paddle_document(payload: dict, document_id: str, source_json_path: Pa
     )
 
 
+def _build_dots_mocr_document(payload: dict, document_id: str, source_json_path: Path, provider_version: str) -> dict:
+    from retainpdf_pipeline.ocr.document_schema.provider_adapters.dots_mocr import (
+        build_dots_mocr_document,
+    )
+
+    return build_dots_mocr_document(
+        payload=payload,
+        document_id=document_id,
+        source_json_path=source_json_path,
+        provider_version=provider_version,
+    )
+
+
 _ADAPTER_BUILDERS: dict[str, AdapterBuilder] = {
     PROVIDER_GENERIC_FLAT_OCR: _build_generic_flat_ocr_document,
     PROVIDER_MINERU: _build_mineru_document,
     PROVIDER_MINERU_CONTENT_LIST_V2: _build_mineru_content_list_v2_document,
     PROVIDER_PADDLE: _build_paddle_document,
+    PROVIDER_DOTS_MOCR: _build_dots_mocr_document,
 }
 
 _ADAPTER_DETECTORS: list[tuple[str, Detector]] = []
@@ -269,6 +284,14 @@ def _looks_like_paddle_layout(payload: dict) -> bool:
     return looks_like_paddle_layout(payload)
 
 
+def _looks_like_dots_mocr(payload: dict) -> bool:
+    from retainpdf_pipeline.ocr.document_schema.provider_adapters.dots_mocr import (
+        looks_like_dots_mocr,
+    )
+
+    return looks_like_dots_mocr(payload)
+
+
 register_ocr_adapter(
     provider=PROVIDER_GENERIC_FLAT_OCR,
     detector=_looks_like_generic_flat_ocr,
@@ -291,6 +314,12 @@ register_ocr_adapter(
     provider=PROVIDER_PADDLE,
     detector=_looks_like_paddle_layout,
     builder=_build_paddle_document,
+)
+
+register_ocr_adapter(
+    provider=PROVIDER_DOTS_MOCR,
+    detector=_looks_like_dots_mocr,
+    builder=_build_dots_mocr_document,
 )
 
 

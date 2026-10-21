@@ -135,7 +135,7 @@ def starts_like_continuation(text: str) -> bool:
         return False
     if LOWER_START_RE.match(stripped):
         return True
-    first = last_word(stripped[:32])
+    first = last_word(stripped.split(maxsplit=1)[0])
     return first in CONTINUATION_START_WORDS
 
 

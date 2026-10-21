@@ -29,6 +29,7 @@ def _layout_block_from_render_block(block, *, page_index: int) -> RenderLayoutBl
         block_id=f"item-{block.source_item_id}" if block.source_item_id else block.block_id,
         page_index=page_index,
         background_rect=list(block.cover_bbox),
+        cover_rects=block.cover_rects,
         content_rect=list(block.inner_bbox),
         content_kind=block.render_kind,
         content_text=block.plain_text if block.render_kind == "plain" else block.markdown_text,
@@ -38,6 +39,7 @@ def _layout_block_from_render_block(block, *, page_index: int) -> RenderLayoutBl
         leading_em=block.leading_em,
         font_weight=block.font_weight,
         fit_to_box=block.fit_to_box,
+        fit_flow_text=block.fit_flow_text,
         fit_single_line=block.fit_single_line,
         fit_min_font_size_pt=block.fit_min_font_size_pt,
         fit_max_font_size_pt=block.fit_max_font_size_pt,
@@ -86,7 +88,6 @@ def _layout_page_spec(
     ]
     apply_title_fit_budget_to_render_blocks(
         blocks,
-        page_width=page_width_pt,
         page_height=page_height_pt,
     )
     return RenderPageSpec(

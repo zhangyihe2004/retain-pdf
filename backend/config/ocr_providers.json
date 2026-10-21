@@ -59,6 +59,36 @@
         }
       }
     },
+    "paddle_local": {
+      "display_name": "PaddleOCR-VL (Local)",
+      "kind": "local_command",
+      "credential": null,
+      "options": {
+        "command": {
+          "type": "string",
+          "default": "python3 /app/services/pipeline/local_models/paddle_vl_wrapper.py"
+        },
+        "raw_provider": {
+          "type": "string",
+          "default": "paddle"
+        }
+      }
+    },
+    "dots_mocr": {
+      "display_name": "Dots.mocr (Local)",
+      "kind": "local_command",
+      "credential": null,
+      "options": {
+        "command": {
+          "type": "string",
+          "default": "python3 -m retainpdf_pipeline.ocr.ocr_provider.dots_mocr_runner"
+        },
+        "raw_provider": {
+          "type": "string",
+          "default": "dots_mocr"
+        }
+      }
+    },
     "local": {
       "display_name": "Local OCR",
       "kind": "local_command",

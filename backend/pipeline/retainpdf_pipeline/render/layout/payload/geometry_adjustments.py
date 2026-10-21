@@ -14,14 +14,11 @@ BODY_TIGHT_GAP_MAX_INSET_RATIO = 0.03
 BODY_TIGHT_GAP_MIN_INSET_PT = 0.35
 BODY_TIGHT_GAP_MIN_TARGET_PT = 1.2
 BODY_TIGHT_GAP_MAX_TARGET_PT = 4.0
-TITLE_BODY_LEFT_TOLERANCE_PT = 18.0
-TITLE_BODY_WIDTH_MAX_SCALE = 1.18
 SHORT_BODY_REGION_MIN_ANCHORS = 2
 SHORT_BODY_REGION_X_TOLERANCE_PAGE_RATIO = 0.10
 SHORT_BODY_REGION_MAX_HEIGHT_RATIO = 0.72
 SHORT_BODY_REGION_MAX_WIDTH_RATIO = 0.78
 SHORT_BODY_REGION_TOP_EXPAND_RATIO = 0.05
-SHORT_BODY_REGION_RIGHT_EXPAND_RATIO = 0.30
 SHORT_BODY_REGION_MIN_GAP_PT = 1.0
 
 
@@ -47,13 +44,6 @@ def build_effective_inner_bboxes(
     }
     _apply_body_tight_gap_inset(effective, body_flags=body_flags, page_width=page_width, locked_indices=locked_indices)
     _apply_short_body_region_expansion(
-        effective,
-        translated_items,
-        body_flags=body_flags,
-        page_width=page_width,
-        locked_indices=locked_indices,
-    )
-    _apply_title_body_width_alignment(
         effective,
         translated_items,
         body_flags=body_flags,
@@ -169,11 +159,6 @@ def _apply_short_body_region_expansion(
         if top_expand > 0.0:
             current[1] = round(current[1] - top_expand, 3)
 
-        anchor_right = max(anchor[2] for anchor in anchors)
-        page_right = (page_width - 4.0) if page_width and page_width > 0 else anchor_right
-        target_right = min(anchor_right, page_right, current[2] + current_width * SHORT_BODY_REGION_RIGHT_EXPAND_RATIO)
-        if target_right > current[2] + 0.5:
-            current[2] = round(target_right, 3)
 
 
 def _previous_region_anchors(
@@ -224,43 +209,6 @@ def _next_same_column_box(
         if _same_text_column(current, candidate, page_width=page_width):
             return candidate
     return None
-
-
-def _apply_title_body_width_alignment(
-    effective: dict[int, list[float]],
-    translated_items: list[dict],
-    *,
-    body_flags: dict[int, bool],
-    page_width: float | None,
-    locked_indices: set[int],
-) -> None:
-    body_boxes = [effective[index] for index in effective if body_flags.get(index)]
-    if not body_boxes:
-        return
-
-    for index, item in enumerate(translated_items):
-        if index not in effective or not is_title_like_block(item):
-            continue
-        if index in locked_indices:
-            continue
-        title = effective[index]
-        title_width = max(0.0, title[2] - title[0])
-        if title_width <= 0.0:
-            continue
-        candidates = [
-            body
-            for body in body_boxes
-            if body[1] >= title[1]
-            and abs(body[0] - title[0]) <= TITLE_BODY_LEFT_TOLERANCE_PT
-            and body[2] > title[2]
-        ]
-        if not candidates:
-            continue
-        target_right = max(body[2] for body in candidates)
-        if page_width and page_width > 0:
-            target_right = min(target_right, page_width - 4.0)
-        max_right = title[0] + title_width * TITLE_BODY_WIDTH_MAX_SCALE
-        title[2] = round(max(title[2], min(target_right, max_right)), 3)
 
 
 def _same_text_column(first: list[float], second: list[float], *, page_width: float | None) -> bool:

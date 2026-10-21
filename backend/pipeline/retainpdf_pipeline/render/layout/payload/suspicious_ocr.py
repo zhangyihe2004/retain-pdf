@@ -17,7 +17,7 @@ SUSPICIOUS_OCR_GLUE_MAX_SOURCE_GAP_PT = 28.0
 SUSPICIOUS_OCR_GLUE_MIN_WIDTH_OVERLAP_RATIO = 0.6
 SUSPICIOUS_OCR_GLUE_OVERFLOW_RATIO = 1.25
 SUSPICIOUS_OCR_GLUE_REASON = "suspicious_ocr_glued_block"
-SUSPICIOUS_OCR_GLUE_DIAGNOSTIC_KIND = "render_skip_detector"
+SUSPICIOUS_OCR_GLUE_DIAGNOSTIC_KIND = "render_warning"
 SUSPICIOUS_OCR_GLUE_DIAGNOSTIC_NAME = "suspicious_ocr_glued_block"
 
 
@@ -31,18 +31,6 @@ def _width_overlap_ratio(current_inner: list[float], next_inner: list[float]) ->
     return overlap_width / min_width
 
 
-def clear_render_text(item: dict, *, reason: str) -> None:
-    item["render_protected_text"] = ""
-    item["render_formula_map"] = []
-    item["translation_unit_protected_translated_text"] = ""
-    item["translation_unit_translated_text"] = ""
-    item["protected_translated_text"] = ""
-    item["translated_text"] = ""
-    item["group_protected_translated_text"] = ""
-    item["group_translated_text"] = ""
-    item["render_skip_reason"] = reason
-
-
 def _append_item_diagnostic(item: dict, diagnostic: dict) -> None:
     existing = item.get("render_diagnostics")
     if isinstance(existing, list):
@@ -53,7 +41,7 @@ def _append_item_diagnostic(item: dict, diagnostic: dict) -> None:
     diagnostics.append(diagnostic)
 
 
-def detect_and_drop_suspicious_ocr_glued_blocks(
+def detect_suspicious_ocr_glued_blocks(
     items: list[dict],
     *,
     page_idx: int,
@@ -153,7 +141,8 @@ def detect_and_drop_suspicious_ocr_glued_blocks(
                 "overflow_ratio": SUSPICIOUS_OCR_GLUE_OVERFLOW_RATIO,
             },
         }
-        clear_render_text(current, reason=SUSPICIOUS_OCR_GLUE_REASON)
+        # Density is not evidence of corrupt OCR. Keep all text and let the
+        # measured fitter decide whether it can fit its actual content area.
         _append_item_diagnostic(current, diagnostic)
         hits.append(diagnostic)
 

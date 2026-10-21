@@ -34,6 +34,11 @@ def build_markdown_from_parts(
             formula_text = formula_lookup.get(part, part)
             chunks.append(f"${normalize_formula_for_latex_math(formula_text)}$")
         else:
+            # Keep explicit paragraphs even when the separator borders a formula.
+            # Single soft wraps retain the historical token-boundary behavior.
+            if re.search(r"\n[^\S\n]*\n", part):
+                chunks.append(part)
+                continue
             text = "\n".join(
                 line
                 for line in (

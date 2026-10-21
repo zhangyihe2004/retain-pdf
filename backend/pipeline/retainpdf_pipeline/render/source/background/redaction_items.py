@@ -5,6 +5,7 @@ from retainpdf_pipeline.render.layout.model.block_view import render_block_prote
 from retainpdf_pipeline.render.layout.model.models import RenderLayoutBlock
 from retainpdf_pipeline.render.policy.formula_guard import protect_formula_regions_in_redaction_items
 from retainpdf_pipeline.render.source.background.redaction_plan import redaction_item_from_render_block
+from retainpdf_pipeline.render.source.background.redaction_plan import split_cover_redaction_item
 
 
 def redaction_items_from_layout_blocks(
@@ -32,5 +33,5 @@ def redaction_items_from_layout_blocks(
                 "_render_block_index": index,
             }
         )
-        redaction_items.append(item)
+        redaction_items.extend(split_cover_redaction_item(item, render_block.cover_rects))
     return redaction_items

@@ -6,12 +6,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 
 REPO_SCRIPTS_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_SCRIPTS_ROOT))
 
+from retainpdf_pipeline.translate.artifacts.io import aggregate_payload_diagnostics
 from retainpdf_pipeline.translate.core.payload import save_translations
 from retainpdf_pipeline.translate.workflow import book_flow
 from retainpdf_pipeline.translate.workflow import execution_runner
@@ -59,6 +58,7 @@ def _payload(translated_text: str) -> list[dict]:
             "source_text": "source",
             "protected_source_text": "source",
             "translated_text": translated_text,
+            "final_status": "translated" if translated_text else "failed",
             "should_translate": True,
             "continuation_group": "",
             "formula_map": [],
@@ -110,21 +110,36 @@ def test_execution_commits_manifest_only_after_checkpoint_validation(tmp_path: P
     assert checkpoint["phase"] == "committed"
 
 
-def test_execution_does_not_publish_manifest_when_export_gate_blocks(tmp_path: Path, monkeypatch) -> None:
+def test_execution_commits_with_unresolved_or_review_errors(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    translated_text = ""
     request = _request(tmp_path)
-    _install_execution_stubs(monkeypatch, translated_text="")
+    _install_execution_stubs(monkeypatch, translated_text=translated_text)
+    monkeypatch.setattr(execution_runner, "aggregate_payload_diagnostics", aggregate_payload_diagnostics)
     monkeypatch.setattr(
         execution_runner,
-        "blocking_untranslated_items",
-        lambda _pages: [{"page_idx": 0, "item_id": "p001-b001", "reason": "empty"}],
+        "build_translation_review",
+        lambda **_kwargs: {"has_errors": True, "issue_count": 1, "severity_summary": {"error": 1}},
     )
 
-    with pytest.raises(RuntimeError, match="export gate blocked"):
-        execution_runner.run_translation_execution_plan(request, _plan())
+    result = execution_runner.run_translation_execution_plan(request, _plan())
 
-    assert not (request.output_dir / "translation-manifest.json").exists()
+    manifest = json.loads(
+        (request.output_dir / "translation-manifest.json").read_text(encoding="utf-8")
+    )
     checkpoint = json.loads(
         (request.output_dir / TRANSLATION_CHECKPOINT_FILE_NAME).read_text(encoding="utf-8")
     )
-    assert checkpoint["status"] == "in_progress"
-    assert checkpoint["phase"] == "validating"
+    assert manifest["status"] == "complete"
+    assert checkpoint["status"] == "complete"
+    assert checkpoint["phase"] == "committed"
+    assert checkpoint["progress"]["pending_item_count"] == int(not translated_text)
+    assert result["translated_pages_map"][0][0]["translated_text"] == translated_text
+    assert result["diagnostics_summary"]["unresolved_translation_count"] == int(not translated_text)
+    assert result["translation_review"]["has_errors"] is True
+    output = capsys.readouterr().out
+    assert output.count("translation export warning:") == 1
+    assert "review_error_count=1" in output
+    if not translated_text:
+        assert "p1:p001-b001:untranslated" in output

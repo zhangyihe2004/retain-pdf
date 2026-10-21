@@ -4,6 +4,12 @@
 
 Policy boundaries:
 
+- `flow_text.py`: the shared ordinary-text/specialized-layout routing decision.
+- `field_style.py`: source-derived style preferences for high-confidence repeated field rows. It never changes coordinates or decides whether translated text fits.
+- All text reuses the original typography stages, with one shared font/field-style finalization. Ordinary flow still uses a single geometric height limit and the shared Typst glyph fitter as its final capacity authority; inherited typography never grants extra capacity.
+- Verified horizontal expansion is a separate final-fit ceiling (`_render_available_width_pt`), never part of `inner_bbox`, typography, density, source lines or collision policy. Measured text retains its original width at the preferred typography when it fits, otherwise borrows only the minimum required width before the existing font/leading fit. Unmeasured special layouts keep their original width. Lists have explicit item spacing; measurement and output use the same style.
+- Original width is derived from the unchanged block rectangle, not stored again in models or manifests. Source-verified capacity is calculated once during final page preparation; the earlier geometry/indent prewarm only collects original metrics. Title budgets remain vertical-only, and unused horizontal capacity never changes overlay fills.
+- Capacity starts at the page edge with the existing safety gap, then respects neighboring blocks, inferred columns, and source-pixel barriers. The current block or the widest aligned text block is not itself a capacity ceiling; solitary text uses the same checks.
 - `body_common.py`: shared body-context predicates and geometry helpers.
 - `body_policy_facade.py`: stable stage API consumed by `body_pipeline.py`.
 - `body_font_dense_policy.py`: dense-body pressure tightening, force-fit marking, and underfilled body growth.

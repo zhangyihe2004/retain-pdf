@@ -118,7 +118,6 @@ def _formula_segment_count(source_text: str) -> int:
 
 def _is_heavy_group(combined_source: str, items: list[dict]) -> tuple[bool, str]:
     segment_count = _formula_segment_count(combined_source)
-    continuation_group = str(items[0].get("continuation_group", "") or "").strip() if items else ""
     aggregate_geometry_group = (
         str(items[0].get("translation_group_strategy", "") or "").strip() == "aggregate_geometry"
         if items
@@ -128,9 +127,9 @@ def _is_heavy_group(combined_source: str, items: list[dict]) -> tuple[bool, str]
         return True, "formula_heavy_group"
     if segment_count > FORMULA_SEGMENT_WINDOW_TARGET_COUNT:
         return True, "formula_windowed_group"
-    if len(combined_source) > HEAVY_GROUP_MAX_SOURCE_CHARS and not continuation_group and not aggregate_geometry_group:
+    if len(combined_source) > HEAVY_GROUP_MAX_SOURCE_CHARS and not aggregate_geometry_group:
         return True, "long_continuation_group"
-    if len(items) > HEAVY_GROUP_MAX_MEMBERS and not continuation_group and not aggregate_geometry_group:
+    if len(items) > HEAVY_GROUP_MAX_MEMBERS and not aggregate_geometry_group:
         return True, "large_continuation_group"
     return False, ""
 

@@ -7,6 +7,7 @@ import re
 from retainpdf_pipeline.translate.artifacts import TranslationDiagnosticsCollector
 from retainpdf_pipeline.translate.llm.providers.deepseek.client import DEFAULT_BASE_URL
 from retainpdf_pipeline.translate.llm.providers.deepseek.client import DEFAULT_MODEL
+from retainpdf_pipeline.translate.llm.providers.deepseek.client import is_hy_mt2_model
 from retainpdf_pipeline.translate.llm.providers.deepseek.client import request_chat_content
 from retainpdf_pipeline.translate.llm.shared.prompt_building import build_messages
 from retainpdf_pipeline.translate.llm.shared.prompt_building import build_single_item_fallback_messages
@@ -26,7 +27,7 @@ from retainpdf_pipeline.translate.llm.shared.structured_models import TRANSLATIO
 
 
 TAGGED_ITEM_OPEN_RE = re.compile(
-    r"<<<ITEM\s+item_id=(?P<item_id>[^\s>]+)(?:\s+decision=(?P<decision>[A-Za-z_-]+))?\s*>>>"
+    r"<<<ITEM\s+(?:item_id=)?(?P<item_id>[^\s>]+)(?:\s+decision=(?P<decision>[A-Za-z_-]+))?\s*>>>"
 )
 TAGGED_ITEM_END_RE = re.compile(r"<<<END>>>")
 # 模型偶尔会在输出末尾损坏闭合标签(实测过 <<<END>>,少一个 >)。内容
@@ -87,7 +88,13 @@ def translate_single_item_plain_text(
     diagnostics: TranslationDiagnosticsCollector | None = None,
     timeout_s: int = 120,
     http_retry_attempts: int | None = None,
+    prompt_model: str = "",
 ) -> dict[str, dict[str, str]]:
+    request_options = {}
+    if is_hy_mt2_model(model) or prompt_model:
+        request_options["allow_transport_recovery"] = False
+    if prompt_model:
+        request_options["stream"] = False
     content = request_chat_content(
         build_single_item_fallback_messages(
             item,
@@ -96,6 +103,7 @@ def translate_single_item_plain_text(
             structured_decision=False,
             response_style="plain_text",
             target_language_name=target_language_name,
+            model=prompt_model or model,
         ),
         api_key=api_key,
         model=model,
@@ -104,7 +112,8 @@ def translate_single_item_plain_text(
         response_format=None,
         timeout=timeout_s,
         request_label=request_label,
-        max_attempts=http_retry_attempts,
+        max_attempts=1 if request_options else http_retry_attempts,
+        **request_options,
     )
     translated_text = extract_single_item_translation_text(content, item["item_id"])
     result = {item["item_id"]: result_entry("translate", translated_text)}
@@ -136,6 +145,7 @@ def translate_single_item_plain_text_unstructured(
             structured_decision=False,
             response_style="plain_text",
             target_language_name=target_language_name,
+            model=model,
         ),
         api_key=api_key,
         model=model,
@@ -213,6 +223,7 @@ def translate_continuation_group_members(
         domain_guidance=domain_guidance,
         mode=mode,
         target_language_name=target_language_name,
+        model=model,
     )
     protocol_attempts = 2
     translated_text = ""
@@ -306,6 +317,7 @@ def translate_single_item_tagged_text(
             mode="fast",
             response_style="tagged",
             target_language_name=target_language_name,
+            model=model,
         ),
         api_key=api_key,
         model=model,
@@ -345,6 +357,7 @@ def translate_single_item_with_decision(
             structured_decision=True,
             response_style="json",
             target_language_name=target_language_name,
+            model=model,
         ),
         api_key=api_key,
         model=model,
@@ -392,6 +405,7 @@ def translate_batch_once(
             mode=mode,
             response_style="tagged",
             target_language_name=target_language_name,
+            model=model,
         ),
         api_key=api_key,
         model=model,

@@ -45,7 +45,7 @@ def test_page_long_body_anchors_raise_single_line_body_font_and_allow_bbox_overf
     assert short["prefer_typst_fit"] is False
 
 
-def test_short_body_bbox_overflow_marker_disables_typst_fit() -> None:
+def test_short_body_inherited_font_is_a_preference_not_overflow_permission() -> None:
     payload = {
         "index": 1,
         "item": {
@@ -79,7 +79,8 @@ def test_short_body_bbox_overflow_marker_disables_typst_fit() -> None:
     block = payload_to_render_block(payload)
 
     assert block.font_size_pt == 10.8
-    assert block.fit_to_box is False
+    assert block.fit_to_box is True
+    assert block.fit_flow_text is True
 
 
 def test_short_body_inline_formula_overflow_keeps_font_and_formula_padding() -> None:
@@ -208,4 +209,5 @@ def test_unified_body_font_still_uses_typst_fit_when_estimated_overflow() -> Non
 
     assert block.fit_to_box is True
     assert block.fit_max_height_pt <= 70.0
-    assert block.fit_min_font_size_pt < block.font_size_pt
+    assert block.fit_flow_text is True
+    assert block.fit_min_font_size_pt == 0.0

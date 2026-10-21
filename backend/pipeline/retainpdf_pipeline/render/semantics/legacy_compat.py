@@ -26,6 +26,12 @@ def legacy_role_values(item: dict | None) -> frozenset[str]:
     return frozenset(legacy_aliases(item))
 
 
+def legacy_raw_block_type(item: dict | None) -> str:
+    """Read the explicit historical item field without inferring another label."""
+
+    return str((item or {}).get("raw_block_type") or "").strip().lower()
+
+
 def legacy_block_class(item: dict | None) -> str:
     """Resolve broad legacy semantics without maintaining a provider map here."""
 
@@ -49,5 +55,6 @@ __all__ = [
     "legacy_block_class",
     "legacy_has_skip_translation_tag",
     "legacy_is_document_title",
+    "legacy_raw_block_type",
     "legacy_role_values",
 ]

@@ -10,7 +10,7 @@ def cover_rects_from_valid_items(valid_items: list[tuple[fitz.Rect, dict, str]])
     mergeable_rects: list[fitz.Rect] = []
     protected_fragments: list[fitz.Rect] = []
     for rect, item, _translated_text in valid_items:
-        if item.get("_formula_guard_fragment"):
+        if item.get("_formula_guard_fragment") or item.get("_source_guard_fragment"):
             protected_fragments.append(rect)
         else:
             mergeable_rects.append(rect)

@@ -291,8 +291,8 @@ def committed_pages_for_changes(
 def commit_checkpoint(payload: dict[str, Any], *, manifest_name: str) -> dict[str, Any]:
     if payload.get("phase") != "validating":
         raise RuntimeError("Translation checkpoint can only commit after validation")
-    if int((payload.get("progress") or {}).get("pending_item_count", -1)) != 0:
-        raise RuntimeError("Translation checkpoint cannot commit with pending items")
+    # Commit finishes this attempt, not necessarily every translation. Keep
+    # unresolved progress intact so partial exports remain observable.
     payload.update(
         {
             "status": "complete",

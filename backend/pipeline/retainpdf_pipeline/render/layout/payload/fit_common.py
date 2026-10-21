@@ -4,6 +4,7 @@ from retainpdf_pipeline.render.layout.payload.render_item import get_render_inne
 from retainpdf_pipeline.render.layout.typography.geometry import inner_bbox
 
 VERTICAL_COLLISION_GAP_PT = 0.9
+FLOW_TEXT_MIN_FONT_SIZE_PT = 4.2
 LAYOUT_DENSITY_SAFE_MAX = 0.89
 LAYOUT_DENSITY_SAFE_MIN = 0.62
 AGGRESSIVE_DEMAND_RATIO = 1.16

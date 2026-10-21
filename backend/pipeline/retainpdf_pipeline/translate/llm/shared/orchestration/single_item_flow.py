@@ -40,6 +40,7 @@ from retainpdf_pipeline.translate.llm.shared.provider_runtime import translate_c
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import translate_single_item_plain_text
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import translate_single_item_plain_text_unstructured
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import unwrap_translation_shell
+from retainpdf_pipeline.translate.llm.providers.deepseek.client import is_hy_mt2_model
 
 
 def _sentence_level_fallback(
@@ -129,7 +130,7 @@ def translate_single_item_plain_text_with_retries(
     item = item_with_runtime_hard_glossary(item, context.glossary_entries)
     # 逐条匹配的术语指引经 item 注入 user 消息(见 prompt_protocols),
     # 不进 system 消息——否则每条请求前缀都不同,前缀缓存全部失效。
-    scoped_terms_guidance = context.terms_guidance
+    scoped_terms_guidance = context.hy_mt_terms_guidance if is_hy_mt2_model(model) else context.terms_guidance
     if scoped_terms_guidance:
         item["_scoped_terms_guidance"] = scoped_terms_guidance
     flow_deps = deps or _default_flow_deps()
@@ -139,6 +140,10 @@ def translate_single_item_plain_text_with_retries(
         str(item.get("item_id", "") or "").startswith("__cg__:")
         and str(item.get("translation_unit_id", "") or "").startswith("__cg__:")
         and str(item.get("translation_group_strategy", "") or "").strip() != "aggregate_geometry"
+        # Hy-MT2 collapses into repetition loops on the member JSON protocol
+        # (measured: full 8192-token burn, malformed JSON). The aggregate
+        # plain-text route with geometric splitting is reliable and fast.
+        and not is_hy_mt2_model(model)
         and flow_deps.translate_group_members_fn is not None
     ):
         try:

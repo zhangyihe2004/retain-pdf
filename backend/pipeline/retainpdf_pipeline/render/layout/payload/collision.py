@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from retainpdf_pipeline.render.layout.payload.collision_context import adjacent_collision_context
 from retainpdf_pipeline.render.layout.payload.collision_context import collision_fit_item
+from retainpdf_pipeline.render.layout.payload.collision_context import flow_height_limit
+from retainpdf_pipeline.render.layout.payload.flow_text import is_flow_payload
 from retainpdf_pipeline.render.layout.payload.metrics import estimated_render_height_pt
 from retainpdf_pipeline.render.layout.payload.fit_vertical import fit_block_to_vertical_limit
 from retainpdf_pipeline.render.policy import typography_policy as typography
@@ -11,7 +13,25 @@ VERTICAL_COLLISION_TRIGGER_RATIO = 0.9
 
 
 def mark_adjacent_collision_risk(ordered_payloads: list[dict]) -> None:
-    for current, nxt in zip(ordered_payloads, ordered_payloads[1:]):
+    boxes = None
+    for index, current in enumerate(ordered_payloads):
+        if "item" not in current:
+            continue
+        if is_flow_payload(current):
+            height = current.get("adjacent_available_height_pt")
+            # Reuse the all-source budget while its verified frame is unchanged.
+            # Render-only inputs (or changed frames) need the spatial fallback.
+            if height is None or current["inner_bbox"] != current["item"].get("_render_inner_bbox"):
+                if boxes is None:
+                    boxes = [p.get("bbox") or p["inner_bbox"] for p in ordered_payloads]
+                fallback = flow_height_limit(current["inner_bbox"], boxes)
+                height = min(height, fallback) if height is not None else fallback
+            current["adjacent_available_height_pt"] = height
+            current["adjacent_collision_risk"] = height < current["inner_bbox"][3] - current["inner_bbox"][1]
+            continue
+        if index + 1 == len(ordered_payloads):
+            continue
+        nxt = ordered_payloads[index + 1]
         context = adjacent_collision_context(current, nxt)
         if context is None:
             continue

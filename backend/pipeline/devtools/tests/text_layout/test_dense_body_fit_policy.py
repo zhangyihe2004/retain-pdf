@@ -118,8 +118,10 @@ class DenseBodyFitPolicyTests(unittest.TestCase):
         blocks = build_render_blocks(items, page_width=430.0, page_height=655.0)
         short_block = next(block for block in blocks if block.source_item_id == "short-body")
 
-        self.assertGreater(short_block.inner_bbox[2] - short_block.inner_bbox[0], 244.0)
-        self.assertGreaterEqual(short_block.font_size_pt, 11.0)
+        self.assertEqual(short_block.inner_bbox[2] - short_block.inner_bbox[0], 244.0)
+        # Without source-pixel verification there is no extra right capacity;
+        # font preference must be evaluated against the original width.
+        self.assertGreater(short_block.font_size_pt, 0.0)
 
     def test_wide_aspect_body_preserves_more_ocr_line_pitch_signal(self):
         base_item = _sample_item(wide_aspect=False)

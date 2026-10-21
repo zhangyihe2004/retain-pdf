@@ -29,7 +29,6 @@ from retainpdf_pipeline.render.layout.payload.prepare import prepare_render_payl
 from retainpdf_pipeline.render.source.items import get_item_translated_text
 from retainpdf_pipeline.render.source.dev_overlay.text_draw import _build_direct_draw_tokens
 from retainpdf_pipeline.render.source.dev_overlay.text_draw import _fit_segment_layout
-from retainpdf_pipeline.render.layout.payload.suspicious_ocr import detect_and_drop_suspicious_ocr_glued_blocks
 from retainpdf_pipeline.render.output.typst.book_renderer import _compile_render_pages_pdf_resilient
 from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_block
 from retainpdf_pipeline.render.output.typst.overlay_ops import overlay_translated_pages_on_doc
@@ -204,7 +203,7 @@ def test_typst_overlay_can_use_block_cover_fill_as_fallback() -> None:
 
     source = build_typst_overlay_source(200.0, 300.0, translated_items)
 
-    assert "rect(" not in source
+    assert source.index("_cover = rect(") < source.index("_flow_text =")
     assert "fill: rgb(255, 255, 255)" in source
 
 

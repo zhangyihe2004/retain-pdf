@@ -29,7 +29,6 @@ from retainpdf_pipeline.render.layout.payload.prepare import prepare_render_payl
 from retainpdf_pipeline.render.source.items import get_item_translated_text
 from retainpdf_pipeline.render.source.dev_overlay.text_draw import _build_direct_draw_tokens
 from retainpdf_pipeline.render.source.dev_overlay.text_draw import _fit_segment_layout
-from retainpdf_pipeline.render.layout.payload.suspicious_ocr import detect_and_drop_suspicious_ocr_glued_blocks
 from retainpdf_pipeline.render.output.typst.book_renderer import _compile_render_pages_pdf_resilient
 from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_block
 from retainpdf_pipeline.render.output.typst.overlay_ops import overlay_translated_pages_on_doc
@@ -241,7 +240,7 @@ def test_build_render_blocks_insets_tight_body_vertical_gap() -> None:
     assert upper.cover_bbox[3] > 92.0
 
 
-def test_build_render_blocks_expands_short_body_region_up_and_right_only() -> None:
+def test_build_render_blocks_without_source_do_not_guess_right_space() -> None:
     items = [
         {
             "item_id": "p001-b001",
@@ -289,11 +288,10 @@ def test_build_render_blocks_expands_short_body_region_up_and_right_only() -> No
     short = blocks[2]
     assert short.inner_bbox[1] < 172.0
     assert short.inner_bbox[3] <= 192.0
-    assert short.inner_bbox[2] > 144.0
-    assert short.inner_bbox[2] <= 177.0
+    assert short.inner_bbox[2] == 144.0
 
 
-def test_build_render_blocks_expands_title_width_toward_body_column() -> None:
+def test_build_render_blocks_without_source_do_not_expand_title_width() -> None:
     items = [
         {
             "item_id": "p001-title",
@@ -326,7 +324,7 @@ def test_build_render_blocks_expands_title_width_toward_body_column() -> None:
     blocks = build_render_blocks(items, page_width=260.0, page_height=320.0)
 
     title = blocks[0]
-    assert title.inner_bbox[2] > 150.0
+    assert title.inner_bbox[2] == 150.0
     assert title.fit_target_width_pt == title.inner_bbox[2] - title.inner_bbox[0]
     assert title.cover_bbox == [23.0, 23.0, 151.0, 49.0]
 

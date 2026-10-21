@@ -35,7 +35,7 @@ def test_committed_and_historical_publications_remain_readable(tmp_path, checkpo
     assert reader.load_translated_pages(tmp_path)[0][0]["translated_text"] == "译文"
 
 
-@pytest.mark.parametrize("mutation", ["in_progress", "pending", "wrong_manifest", "wrong_path",
+@pytest.mark.parametrize("mutation", ["in_progress", "wrong_manifest", "wrong_path",
                                        "missing_page", "duplicate_page", "no_hash", "bad_schema"])
 def test_checkpoint_and_manifest_must_describe_same_commit(tmp_path, mutation):
     _, manifest, marker, payload = publication(tmp_path)

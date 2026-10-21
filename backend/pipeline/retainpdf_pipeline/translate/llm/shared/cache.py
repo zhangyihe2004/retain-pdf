@@ -31,7 +31,7 @@ from retainpdf_pipeline.translate.llm.validation.placeholder_tokens import strip
 # The file and shard directory are fsynced because this cache is also the
 # finest-grained recovery layer between page checkpoint flushes.
 UNESCAPED_INLINE_DOLLAR_RE = re.compile(r"(?<!\\)\$")
-UNIT_CACHE_KEY_VERSION = "translation-unit-cache-v2"
+UNIT_CACHE_KEY_VERSION = "translation-unit-cache-v4"
 
 
 def _prompt_context_signature(item: dict) -> dict[str, str]:

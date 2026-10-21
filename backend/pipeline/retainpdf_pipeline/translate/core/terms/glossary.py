@@ -39,6 +39,19 @@ def build_glossary_guidance(entries: list[GlossaryEntry]) -> str:
     return "\n".join(lines)
 
 
+def build_hy_mt_glossary_guidance(entries: list[GlossaryEntry]) -> str:
+    """Render preferred terms with Hy-MT2's terminology template."""
+    preferred_entries = [entry for entry in entries if entry.level == "preferred"]
+    if not preferred_entries:
+        return ""
+    lines = ["参考下面的翻译："]
+    for entry in preferred_entries:
+        source = _safe_guidance_field(entry.source)
+        target = _safe_guidance_field(entry.target)
+        lines.append(f"{source} 翻译成 {target}")
+    return "\n".join(lines)
+
+
 TERM_WORD_CHARS = r"A-Za-z0-9_"
 
 

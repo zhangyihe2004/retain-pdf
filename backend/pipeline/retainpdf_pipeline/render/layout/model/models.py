@@ -49,6 +49,8 @@ class RenderBlock:
     preserve_line_breaks: bool = False
     preserved_line_boxes: list[RenderLineBox] | None = None
     toc_entries: list[RenderTocEntry] | None = None
+    fit_flow_text: bool = False
+    cover_rects: list[list[float]] | None = None
 
 
 @dataclass
@@ -82,6 +84,8 @@ class RenderLayoutBlock:
     preserve_line_breaks: bool = False
     preserved_line_boxes: list[RenderLineBox] | None = None
     toc_entries: list[RenderTocEntry] | None = None
+    fit_flow_text: bool = False
+    cover_rects: list[list[float]] | None = None
 
 
 @dataclass

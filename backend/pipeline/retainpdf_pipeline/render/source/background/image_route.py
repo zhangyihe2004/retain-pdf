@@ -29,12 +29,19 @@ def replace_background_image_page(
     xref, image_rect = primary
     doc = page.parent
     rects: list[fitz.Rect] = []
+    has_source_guards = False
     for _rect, item, _translated_text in iter_valid_translated_items(translated_items):
+        fragments = item.get("_render_cover_rects")
+        has_source_guards |= fragments is not None or bool(item.get("_source_guard_fragment"))
+        if fragments is not None:
+            rects.extend(fitz.Rect(fragment) for fragment in fragments)
+            continue
         bbox = item.get("bbox", [])
         if len(bbox) != 4:
             continue
         rects.append(fitz.Rect(bbox))
-    rects = merge_close_vertical_rects(rects)
+    if not has_source_guards:
+        rects = merge_close_vertical_rects(rects)
     if not rects:
         return False
 

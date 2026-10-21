@@ -1,0 +1,25 @@
+[Unit]
+Description=GLiNER2.5 CPU company API on 41012
+StartLimitIntervalSec=1800
+StartLimitBurst=3
+
+[Service]
+Type=exec
+Environment=PYTHONUNBUFFERED=1
+Environment=GLINER_HOST=127.0.0.1
+Environment=GLINER_PORT=41012
+EnvironmentFile=%h/ocr/model-services/model-services.env
+WorkingDirectory=%h/ocr
+ExecStart=/bin/bash %h/ocr/model-services/start-model.sh gliner
+ExecStartPost=%h/ocr/.venv_hymt/bin/python %h/ocr/model-services/wait-ready.py http://${GLINER_HOST}:${GLINER_PORT}
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillSignal=SIGTERM
+KillMode=control-group
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

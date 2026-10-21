@@ -5,8 +5,11 @@ from statistics import median
 
 from retainpdf_pipeline.foundation.config import layout
 from retainpdf_pipeline.render.layout.payload.body_common import resolve_body_targets
+from retainpdf_pipeline.render.layout.payload.body_common import is_body_context_text_payload
+from retainpdf_pipeline.render.layout.payload.body_font_policy import unify_similar_body_fonts
 from retainpdf_pipeline.render.layout.payload import body_policy_facade as body_policy
 from retainpdf_pipeline.render.layout.payload.line_structure import fit_preserved_line_block_metrics
+from retainpdf_pipeline.render.layout.payload.field_style import apply_field_style_preferences
 
 
 BodyStage = Callable[..., None]
@@ -75,6 +78,26 @@ def apply_body_payload_pipeline(
     page_text_width_med: float,
     book_body_font_target: float | None = None,
 ) -> None:
+    _apply_body_stages(
+        ordered_payloads, page_text_width_med=page_text_width_med, book_body_font_target=book_body_font_target,
+    )
+    if layout.FONT_UNIFY_MODE != "off":
+        # Finalize style once after legacy density growth, including context
+        # anchors that the strict body detector does not classify as body.
+        unify_similar_body_fonts(
+            [p for p in ordered_payloads if is_body_context_text_payload(p)], ordered_payloads,
+            page_text_width_med=page_text_width_med, book_body_font_target=book_body_font_target,
+        )
+        apply_field_style_preferences(ordered_payloads)
+    _refit_preserved_line_payloads([p for p in ordered_payloads if p["is_body"]])
+
+
+def _apply_body_stages(
+    ordered_payloads: list[dict],
+    *,
+    page_text_width_med: float,
+    book_body_font_target: float | None,
+) -> None:
     body_payloads = [payload for payload in ordered_payloads if payload["is_body"]]
     if not body_payloads:
         return
@@ -107,7 +130,6 @@ def apply_body_payload_pipeline(
             body_policy.restore_comfort_body_leading,
             body_policy.harmonize_long_body_payloads,
             body_policy.smooth_adjacent_body_payloads,
-            *BODY_FONT_UNIFY_STAGES,
             body_policy.recover_underfilled_body_density,
             body_policy.refit_body_leading_after_font_unify,
         )
@@ -122,4 +144,3 @@ def apply_body_payload_pipeline(
             page_text_width_med=page_text_width_med,
             book_body_font_target=book_body_font_target,
         )
-    _refit_preserved_line_payloads(body_payloads)

@@ -14,7 +14,7 @@ from retainpdf_pipeline.render.source.prewarm_manifest import float_list
 from retainpdf_pipeline.render.source.prewarm_color_profile import apply_page_color_adapt_for_prewarm
 
 
-BACKGROUND_RENDER_PAGE_SPECS_ALGORITHM_VERSION = "background_render_page_specs_v5_inline_math_compat"
+BACKGROUND_RENDER_PAGE_SPECS_ALGORITHM_VERSION = "background_render_page_specs_v10_original_width"
 
 
 def build_background_render_page_specs_manifest(
@@ -70,6 +70,7 @@ def render_layout_block_to_manifest(block: RenderLayoutBlock) -> dict[str, Any]:
         "block_id": block.block_id,
         "page_index": block.page_index,
         "background_rect": list(block.background_rect),
+        "cover_rects": block.cover_rects,
         "content_rect": list(block.content_rect),
         "content_kind": block.content_kind,
         "content_text": block.content_text,
@@ -79,6 +80,7 @@ def render_layout_block_to_manifest(block: RenderLayoutBlock) -> dict[str, Any]:
         "leading_em": block.leading_em,
         "font_weight": block.font_weight,
         "fit_to_box": block.fit_to_box,
+        "fit_flow_text": block.fit_flow_text,
         "fit_single_line": block.fit_single_line,
         "fit_min_font_size_pt": block.fit_min_font_size_pt,
         "fit_max_font_size_pt": block.fit_max_font_size_pt,
@@ -189,6 +191,7 @@ def render_layout_block_from_manifest(value: object) -> RenderLayoutBlock | None
             block_id=block_id,
             page_index=int(value.get("page_index")),
             background_rect=background_rect,
+            cover_rects=value.get("cover_rects"),
             content_rect=content_rect,
             content_kind=content_kind,
             content_text=str(value.get("content_text", "") or ""),
@@ -198,6 +201,7 @@ def render_layout_block_from_manifest(value: object) -> RenderLayoutBlock | None
             leading_em=leading_em,
             font_weight=str(value.get("font_weight", "regular") or "regular"),
             fit_to_box=bool(value.get("fit_to_box")),
+            fit_flow_text=bool(value.get("fit_flow_text")),
             fit_single_line=bool(value.get("fit_single_line")),
             fit_min_font_size_pt=float(value.get("fit_min_font_size_pt") or 0.0),
             fit_max_font_size_pt=float(value.get("fit_max_font_size_pt") or 0.0),

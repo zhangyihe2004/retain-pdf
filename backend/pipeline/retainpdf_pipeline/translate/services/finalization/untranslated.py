@@ -17,7 +17,6 @@ from retainpdf_pipeline.translate.core.payload.parts.units import pending_transl
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import request_chat_content
 from retainpdf_pipeline.translate.llm.result_payload import result_entry
 from retainpdf_pipeline.translate.llm.shared import upstream_resilience as _resilience
-from retainpdf_pipeline.translate.llm.validation.quality import review_translation_item
 from retainpdf_pipeline.translate.services.policy import should_skip_model_by_policy
 
 
@@ -204,6 +203,8 @@ def _recovery_members_by_key(page_payloads: dict[int, list[dict]]) -> dict[str, 
 def _can_final_recover(item: dict) -> bool:
     if should_skip_model_by_policy(item):
         return False
+    if (item.get("translation_diagnostics") or {}).get("degradation_reason") == "deepseek_fallback_failed":
+        return False
     source_text = _source_text(item)
     return bool(source_text and any(ch.isalpha() for ch in source_text))
 
@@ -235,13 +236,8 @@ def _recover_one(
             "degradation_reason": "blocking_untranslated_recovered",
             "final_status": "translated",
         }
-        issues = [
-            issue
-            for issue in review_translation_item(item, payload).issues
-            if issue.severity == "error"
-        ]
-        if issues:
-            raise ValueError("final recovery output failed validation: " + ", ".join(issue.kind for issue in issues[:3]))
+        # The shared export review records quality issues without discarding
+        # the last non-empty model response after all recovery attempts.
         return item, payload, None
     except Exception as exc:
         return item, None, exc

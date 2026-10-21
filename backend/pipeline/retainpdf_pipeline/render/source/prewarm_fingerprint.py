@@ -17,6 +17,7 @@ from retainpdf_pipeline.render.source.prewarm_contracts import PAYLOAD_RENDER_AL
 from retainpdf_pipeline.render.source.prewarm_manifest import float_or_zero
 from retainpdf_pipeline.render.source.prewarm_manifest import int_or_default
 from retainpdf_pipeline.render.source_cleanup.protected_blocks import protected_pages_from_document_path
+from retainpdf_pipeline.render.source.background.safe_text_geometry import source_boxes_by_page
 
 
 def build_payload_structure_hash(translated_pages: dict[int, list[dict]]) -> str:
@@ -88,6 +89,7 @@ def build_render_prewarm_fingerprint(
         "hidden_text_strip_algorithm": HIDDEN_TEXT_STRIP_ALGORITHM_VERSION,
         "image_compression_algorithm": IMAGE_COMPRESSION_ALGORITHM_VERSION,
         "geometry_adjustment_algorithm": GEOMETRY_ADJUSTMENT_ALGORITHM_VERSION,
+        "geometry_source_hash": hashlib.sha256(json.dumps(source_boxes_by_page(source_pdf_path), sort_keys=True).encode("utf-8")).hexdigest(),
         "payload_render_algorithm": PAYLOAD_RENDER_ALGORITHM_VERSION,
     }
 

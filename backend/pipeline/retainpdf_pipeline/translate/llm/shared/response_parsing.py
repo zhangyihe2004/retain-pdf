@@ -40,11 +40,46 @@ def extract_json_text(content: str) -> str:
             lines = lines[:-1]
         text = "\n".join(lines).strip()
     text = _normalize_loose_json_text(text)
+    # Prefer the first balanced JSON object. Naive first-"{" / last-"}"
+    # slicing breaks when a model appends stray trailing tokens (e.g. `"}`
+    # followed by padding) after a complete object: the last "}" then sits
+    # inside the garbage tail and the slice keeps the junk in the middle.
+    sliced = _slice_first_balanced_json_object(text)
+    if sliced is not None:
+        return sliced
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end < start:
         raise ValueError("Model response does not contain a JSON object.")
     return text[start : end + 1]
+
+
+def _slice_first_balanced_json_object(text: str) -> str | None:
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(text)):
+        char = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    return None
 
 
 def extract_single_item_translation_text(content: str, item_id: str) -> str:

@@ -9,6 +9,7 @@ from retainpdf_pipeline.foundation.config import fonts
 from retainpdf_pipeline.render.output.pdf_writer import save_fast_pdf
 from retainpdf_pipeline.render.output.pdf_writer import save_optimized_pdf
 from retainpdf_pipeline.render.layout.payload.prepare import prepare_render_payloads_by_page
+from retainpdf_pipeline.render.source.background.safe_text_geometry import apply_safe_geometry_to_pages
 from retainpdf_pipeline.render.document.page_map import RenderPageMap
 from retainpdf_pipeline.render.document.metadata import copy_toc
 from retainpdf_pipeline.render.document.metadata import copy_toc_for_page_map
@@ -16,7 +17,6 @@ from retainpdf_pipeline.render.output.typst.compiler import compile_typst_book_b
 from retainpdf_pipeline.render.output.typst.sanitize import sanitize_page_specs_for_typst_book_background
 from retainpdf_pipeline.render.output.typst.shared import default_typst_temp_root
 from retainpdf_pipeline.render.output.typst.shared import prepare_typst_work_dir
-from retainpdf_pipeline.render.policy import apply_render_page_policy_fields
 from retainpdf_pipeline.render.policy import apply_render_pages_policy_fields
 
 TypstRepairRequestFn = Callable[..., str]
@@ -34,9 +34,8 @@ def prepare_single_page_items(
     *,
     source_pdf_path: Path | None = None,
 ) -> list[dict]:
-    prepared_pages = prepare_render_payloads_by_page({page_idx: translated_items}, source_pdf_path=source_pdf_path)
-    prepared_items = prepared_pages.get(page_idx, translated_items)
-    return apply_render_page_policy_fields(prepared_items)
+    prepared_pages = prepare_translated_pages_for_render(source_pdf_path, {page_idx: translated_items})
+    return prepared_pages.get(page_idx, translated_items)
 
 
 def collect_background_page_specs(
@@ -80,6 +79,7 @@ def prepare_translated_pages_for_render(
         first_line_indent_lookup=first_line_indent_lookup,
         effective_inner_bbox_lookup=effective_inner_bbox_lookup,
     )
+    apply_safe_geometry_to_pages(prepared_pages, source_pdf_path)
     return apply_render_pages_policy_fields(prepared_pages)
 
 

@@ -32,7 +32,6 @@ from retainpdf_pipeline.services.pipeline_shared.events import pipeline_event_wr
 from retainpdf_pipeline.services.pipeline_shared.io import save_json
 from retainpdf_pipeline.translate.artifacts import write_translation_debug_index
 from retainpdf_pipeline.translate.artifacts import write_translation_diagnostics
-from retainpdf_pipeline.translate.artifacts import blocking_untranslated_items
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import DEFAULT_BASE_URL
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import get_api_key
 from retainpdf_pipeline.translate.llm.shared.provider_runtime import normalize_base_url
@@ -199,20 +198,6 @@ def main() -> None:
             message="translation review 已发布",
         )
 
-        blocking_untranslated = blocking_untranslated_items(result.get("translated_pages_map", {}))
-        if blocking_untranslated:
-            preview = ", ".join(
-                f"p{int(item['page_idx']) + 1}:{item['item_id']}:{item['reason']}"
-                for item in blocking_untranslated[:8]
-            )
-            raise RuntimeError(
-                f"translation export gate blocked: unresolved_translation_count={len(blocking_untranslated)} preview={preview}"
-            )
-        if review_summary.get("has_errors"):
-            print(
-                "translation review: errors recorded in translation_review.json; export continues because artifacts are diagnostic",
-                flush=True,
-            )
         # Stage decoupling: the translate stage no longer runs render
         # prewarm (see retainpdf_pipeline.render.workflow.prewarm_entry).
         # The render stage rebuilds prewarm synchronously from translation

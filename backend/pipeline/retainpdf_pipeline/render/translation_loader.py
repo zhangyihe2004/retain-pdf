@@ -27,7 +27,6 @@ def _committed_page_hashes(raw: bytes | None, *, manifest_path: Path,
                 or checkpoint.get("schema_version") != 1
                 or checkpoint.get("status") != "complete"
                 or checkpoint.get("phase") != "committed"
-                or checkpoint.get("progress", {}).get("pending_item_count") != 0
                 or checkpoint.get("final_manifest") != manifest_path.name):
             raise ValueError("checkpoint is not a committed publication")
         pages = checkpoint["pages"]

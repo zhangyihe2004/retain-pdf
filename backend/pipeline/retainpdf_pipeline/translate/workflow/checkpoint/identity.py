@@ -63,6 +63,9 @@ def build_translation_identity(
             for entry in plan.glossary_entries
         ],
     }
+    entity_names = getattr(getattr(plan, "translation_context", None), "entity_names", ())
+    if entity_names:
+        parameters["entity_names"] = list(entity_names)
     fingerprint_payload = {
         "normalized_document_sha256": _sha256_file(request.source_json_path),
         "parameters_sha256": _sha256_json(parameters),

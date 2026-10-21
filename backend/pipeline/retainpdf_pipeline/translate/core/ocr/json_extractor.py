@@ -204,6 +204,29 @@ def iter_block_lines(block: dict):
 
 
 def block_segments(block: dict) -> list[dict]:
+    lines = block.get("lines", [])
+    source_segments = block.get("segments", [])
+    if (
+        lines
+        and (
+            all(line.get("bbox_precision") == "synthetic_wrap" for line in lines)
+            or (
+                (block.get("source") or {}).get("provider") == "dots_mocr"
+                and all(line.get("bbox_precision") in {"synthetic_newline", "block_fallback"} for line in lines)
+            )
+        )
+        and len(source_segments) == 1
+        and source_segments[0].get("type") == "text"
+        and all(
+            span.get("type") == "text"
+            for line in lines
+            for span in (line.get("spans") or line.get("segments") or [])
+        )
+    ):
+        # Estimated visual rows must not flatten semantic paragraph/list breaks.
+        return [{"type": "text", "content": normalize_source_text(
+            str(source_segments[0].get("text", "") or ""),
+        )}]
     segments: list[dict] = []
     for line in iter_block_lines(block):
         spans = line.get("spans", []) or line.get("segments", [])
@@ -254,12 +277,14 @@ def block_lines(block: dict) -> list[dict]:
                     ),
                     "content": normalize_span_text(content, next_content),
                     "bbox": span.get("bbox", []),
+                    **({"bbox_precision": span["bbox_precision"]} if "bbox_precision" in span else {}),
                 }
             )
         if spans_out:
             lines_out.append(
                 {
                     "bbox": line.get("bbox", []),
+                    **({"bbox_precision": line["bbox_precision"]} if "bbox_precision" in line else {}),
                     "spans": spans_out,
                 }
             )

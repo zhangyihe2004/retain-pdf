@@ -58,6 +58,8 @@ def block_text(block: dict) -> str:
 
 def block_line_texts(block: dict) -> list[str]:
     content = block.get("content", {}) or {}
+    if str(content.get("text_flow", "") or "").strip().lower() == "flow":
+        return []
     text = str(content.get("text", "") or "")
     explicit_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(explicit_lines) >= 2:
@@ -70,6 +72,9 @@ def block_line_texts(block: dict) -> list[str]:
 
 def block_text_flow(block: dict) -> str:
     content = block.get("content", {}) or {}
+    explicit = str(content.get("text_flow", "") or "").strip().lower()
+    if explicit in {"flow", TEXT_FLOW_PRESERVE_LINES}:
+        return explicit
     text = str(content.get("text", "") or "")
     if len([line for line in text.splitlines() if line.strip()]) >= 2:
         return TEXT_FLOW_PRESERVE_LINES

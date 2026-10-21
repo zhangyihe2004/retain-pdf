@@ -94,14 +94,18 @@ def run_translation_execution_plan(
             translation_context=plan.translation_context,
         )
         blocking = blocking_untranslated_items(translated_pages_map)
-        if blocking:
+        if blocking or review_summary.get("has_errors"):
             preview = ", ".join(
                 f"p{int(item['page_idx']) + 1}:{item['item_id']}:{item['reason']}"
                 for item in blocking[:8]
             )
-            raise RuntimeError(
-                "translation export gate blocked: "
-                f"unresolved_translation_count={len(blocking)} preview={preview}"
+            print(
+                "translation export warning: "
+                f"unresolved_translation_count={len(blocking)} "
+                f"review_error_count={(review_summary.get('severity_summary') or {}).get('error', 0)}; "
+                "export continues with available model output; missing output keeps source."
+                + (f" preview={preview}" if preview else ""),
+                flush=True,
             )
         manifest_path = write_translation_manifest(
             request.output_dir,

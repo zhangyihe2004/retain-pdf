@@ -147,7 +147,11 @@ def looks_like_hard_nontranslatable_metadata(item: dict) -> bool:
     text = " ".join((item.get("source_text") or "").split())
     if not text:
         return False
-    return looks_like_hard_nontranslatable_text(text)
+    if looks_like_url_fragment(text) or looks_like_pure_email_fragment(text):
+        return True
+    role = str(item.get("structure_role") or item.get("layout_role") or "").lower()
+    is_heading = role in {"title", "heading", "document_title"} or item.get("block_class") == "title"
+    return not is_heading and looks_like_short_copyright_tail(text)
 
 
 def looks_like_code_literal_text_value(text: str) -> bool:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from retainpdf_pipeline.render.layout.markdown_lists import is_list_item_block_type
+from retainpdf_pipeline.render.semantics.legacy_compat import legacy_raw_block_type
 from retainpdf_pipeline.render.semantics.text_flow import TEXT_FLOW_PRESERVE_LINES
 from retainpdf_pipeline.render.semantics.text_flow import classify_text_flow
 from retainpdf_pipeline.render.semantics.text_flow import line_texts_from_lines
@@ -15,6 +17,8 @@ PUNCTUATION_RE = re.compile(r"^[，。！？；：、,.!?;:()\[\]{}<>《》“�
 SENTENCE_END_RE = re.compile(r"[.!?。！？]\s*$")
 ORDERED_LIST_LINE_RE = re.compile(r"^\s*(?:\d{1,4}|[A-Za-z])\s*[\.)、]\s+\S+")
 BULLET_LIST_LINE_RE = re.compile(r"^\s*(?:[-*•‣◦])\s+\S+")
+LIST_ITEM_MARKER_RE = re.compile(r"^\s*(?:\*|\+|-|•|‣|◦)\s+(?P<body>\S.*)$")
+COLLAPSED_LIST_BOUNDARY_RE = re.compile(r"(?<=[.!?。！？])[ \t]*(?P<marker>\*|\+|-|•|‣|◦)(?=[ \t]+\S)")
 GLOSSARY_TERM_LINE_RE = re.compile(r"^\s*(?:[A-Z][A-Z0-9-]{1,12}|[A-Z]\d{1,3}[A-Z]*)\s+\S+")
 BODY_LIST_BLOCK_RE = re.compile(
     r"^\s*(?:(?:\d{1,4}|[A-Za-z])\s*[\.)、]|[-*•‣◦])\s+\S.*"
@@ -256,6 +260,11 @@ def maybe_preserve_structured_line_breaks(item: dict, translated_text: str) -> s
     text = str(translated_text or "").strip()
     if not text:
         return text
+    rendered_list = _render_markdown_list_paragraphs(item, text)
+    if rendered_list is not None:
+        return rendered_list
+    if _is_markdown_list_text(text):
+        return text
     if "\n" in text:
         text_lines = [line.strip() for line in text.splitlines() if line.strip()]
         if _should_disable_caption_preserve_lines(item, text_lines):
@@ -276,6 +285,79 @@ def maybe_preserve_structured_line_breaks(item: dict, translated_text: str) -> s
     item["_render_preserve_line_breaks"] = True
     item["_render_line_structure"] = "structured_lines"
     return "\n".join(chunks)
+
+
+def _is_markdown_list_text(text: str) -> bool:
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    return all(BULLET_LIST_LINE_RE.match(line) for line in lines)
+
+
+def _render_markdown_list_paragraphs(item: dict, translated_text: str) -> str | None:
+    if not is_list_item_block_type(legacy_raw_block_type(item)):
+        return None
+
+    source_text = str(item.get("source_text", "") or "")
+    source_lines = [line.strip() for line in source_text.splitlines() if line.strip()]
+    source_item_count = sum(1 for line in source_lines if LIST_ITEM_MARKER_RE.match(line))
+    # Repair only missing boundaries with the complete source item count.
+    # Literal prose, escaped markers, code and direct math remain untouched.
+    if source_item_count > 1 and not any(token in translated_text for token in ("`", "$")):
+        current_count = sum(1 for line in translated_text.splitlines() if LIST_ITEM_MARKER_RE.match(line.strip()))
+        if 0 < current_count < source_item_count:
+            repaired = COLLAPSED_LIST_BOUNDARY_RE.sub(r"\n\g<marker>", translated_text)
+            repaired_count = sum(1 for line in repaired.splitlines() if LIST_ITEM_MARKER_RE.match(line.strip()))
+            if repaired_count == source_item_count:
+                translated_text = repaired
+    translated_lines = translated_text.splitlines()
+    if source_item_count < 1 or not translated_lines:
+        return None
+
+    paragraphs: list[str] = []
+    list_items: list[str] = []
+    list_item_count = 0
+    pending_blank = False
+
+    def flush_list_items() -> None:
+        if list_items:
+            paragraphs.append("\n".join(list_items))
+            list_items.clear()
+
+    for raw_line in translated_lines:
+        line = raw_line.strip()
+        if not line:
+            pending_blank = True
+            continue
+        marker = LIST_ITEM_MARKER_RE.match(line)
+        if marker:
+            body = re.sub(r"(\*\*.+?\*\*)(?=[\u4e00-\u9fff])", r"\1 ", marker.group("body"))
+            list_items.append(f"* {body}")
+            list_item_count += 1
+        elif line.startswith("**") and line.endswith("**"):
+            flush_list_items()
+            paragraphs.append(line)
+        elif pending_blank and not raw_line.startswith(("  ", "\t")):
+            # A non-indented paragraph after a blank is not a list continuation.
+            flush_list_items()
+            paragraphs.append(line)
+        elif list_items:
+            list_items[-1] = f"{list_items[-1]} {line}"
+        elif paragraphs:
+            paragraphs[-1] = f"{paragraphs[-1]} {line}"
+        else:
+            return None
+        pending_blank = False
+
+    flush_list_items()
+    if list_item_count != source_item_count:
+        return None
+    # Cached translation records can still carry the old visual-line contract.
+    # Keep semantic list entries as Markdown paragraphs, not OCR visual rows.
+    item["text_flow"] = "flow"
+    item.pop("_render_preserve_line_breaks", None)
+    item.pop("_render_line_structure", None)
+    return "\n\n".join(paragraphs)
 
 
 def fit_preserved_line_block_metrics(

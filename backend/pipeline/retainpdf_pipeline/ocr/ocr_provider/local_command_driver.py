@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 
 from retainpdf_pipeline.foundation.shared.job_dirs import job_dirs_from_explicit_args
@@ -86,7 +88,7 @@ def run_local_command_ocr_to_job_dir(args: SimpleNamespace) -> OcrProviderResult
 
     timeout_seconds = _configured_timeout_seconds(args)
     try:
-        command_argv = shlex.split(command)
+        command_argv = _split_local_command(command)
     except ValueError as exc:
         raise RuntimeError(f"local OCR provider command could not be parsed: {exc}") from exc
     if not command_argv:
@@ -100,40 +102,40 @@ def run_local_command_ocr_to_job_dir(args: SimpleNamespace) -> OcrProviderResult
         provider=provider_name,
     )
     try:
-        completed = subprocess.run(
+        with subprocess.Popen(
             command_argv,
             shell=False,
             cwd=str(job_dirs.root),
             env=env,
             text=True,
-            capture_output=True,
-            check=False,
-            timeout=timeout_seconds,
-        )
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        ) as process:
+            def forward_output() -> None:
+                assert process.stdout is not None
+                for line in process.stdout:
+                    print(line, end="" if line.endswith("\n") else "\n", flush=True)
+
+            # Keep the parent-side tee logs and the timeout, even if the child
+            # is silent. Both streams were already replayed to stdout before.
+            output_thread = Thread(target=forward_output, daemon=True)
+            output_thread.start()
+            try:
+                process.wait(timeout=timeout_seconds)
+            except BaseException:
+                process.kill()
+                process.wait()
+                raise
+            finally:
+                output_thread.join()
     except subprocess.TimeoutExpired as exc:
-        timeout_stdout = str(exc.stdout or "")
-        timeout_stderr = str(exc.stderr or "")
-        if timeout_stdout:
-            print(timeout_stdout, end="" if timeout_stdout.endswith("\n") else "\n", flush=True)
-        if timeout_stderr:
-            print(timeout_stderr, end="" if timeout_stderr.endswith("\n") else "\n", flush=True)
         raise RuntimeError(
             f"local OCR provider command timed out after {timeout_seconds:.0f}s"
         ) from exc
-    if completed.stdout:
-        print(
-            completed.stdout,
-            end="" if completed.stdout.endswith("\n") else "\n",
-            flush=True,
-        )
-    if completed.stderr:
-        print(
-            completed.stderr,
-            end="" if completed.stderr.endswith("\n") else "\n",
-            flush=True,
-        )
-    if completed.returncode != 0:
-        raise RuntimeError(f"local OCR provider command failed with exit code {completed.returncode}")
+    if process.returncode != 0:
+        raise RuntimeError(f"local OCR provider command failed with exit code {process.returncode}")
     source_pdf_path = _resolve_command_source_pdf(source_pdf_path, job_dirs.source_dir)
     if not normalized_json_path.exists():
         _materialize_normalized_document_from_local_raw(
@@ -141,6 +143,7 @@ def run_local_command_ocr_to_job_dir(args: SimpleNamespace) -> OcrProviderResult
             normalized_report_json_path=normalized_report_json_path,
             raw_payload_json_path=raw_payload_json_path,
             provider_result_json_path=provider_result_json_path,
+            source_pdf_path=source_pdf_path,
             raw_provider=raw_provider,
             document_id=job_dirs.root.name,
         )
@@ -202,6 +205,20 @@ def _configured_text(
     return str(source_env.get(env_name, "") or "").strip()
 
 
+def _split_local_command(command: str) -> list[str]:
+    """Parse configured commands without treating Windows path separators as escapes."""
+    if os.name != "nt":
+        return shlex.split(command)
+
+    parts = shlex.split(command, posix=False)
+    return [
+        part[1:-1]
+        if len(part) >= 2 and part[0] == part[-1] and part[0] in {'"', "'"}
+        else part
+        for part in parts
+    ]
+
+
 def _configured_timeout_seconds(args: SimpleNamespace) -> float:
     raw = _configured_text(
         args,
@@ -239,6 +256,7 @@ def _materialize_normalized_document_from_local_raw(
     normalized_report_json_path: Path,
     raw_payload_json_path: Path,
     provider_result_json_path: Path,
+    source_pdf_path: Path,
     raw_provider: str,
     document_id: str,
 ) -> None:
@@ -249,6 +267,30 @@ def _materialize_normalized_document_from_local_raw(
             f"{normalized_json_path} / {raw_payload_json_path}"
         )
     provider = raw_provider or PROVIDER_GENERIC_FLAT_OCR
+    if provider.strip().lower() == "paddle":
+        # A local command may be used as a transport for PaddleOCR-VL. Keep
+        # that route on the same provider-specific normalization contract as
+        # the built-in Paddle driver: raw Paddle coordinates are typically in
+        # rendered-image pixels and must be rescaled to the source PDF's
+        # point space before translation/rendering.
+        from retainpdf_pipeline.ocr.ocr_provider.paddle_normalize import (
+            save_normalized_document_for_paddle,
+        )
+
+        provider_payload = json.loads(
+            source_json_path.read_text(encoding="utf-8-sig")
+        )
+        save_normalized_document_for_paddle(
+            provider_result_json_path=source_json_path,
+            source_pdf_path=source_pdf_path,
+            normalized_json_path=normalized_json_path,
+            normalized_report_json_path=normalized_report_json_path,
+            document_id=document_id,
+            provider_version="local",
+            provider_payload=provider_payload,
+        )
+        return
+
     document, report = adapt_path_to_document_v1_with_report(
         source_json_path=source_json_path,
         document_id=document_id,

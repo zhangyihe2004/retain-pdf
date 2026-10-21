@@ -127,6 +127,7 @@ def _background_cache_key(
                 {
                     "id": block.block_id,
                     "cover": _block_cover_rect(block),
+                    "cover_rects": block.cover_rects,
                 }
                 for block in spec.blocks
             ],

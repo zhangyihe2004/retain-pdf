@@ -44,8 +44,6 @@ def test_run_book_pipeline_returns_render_diagnostics(monkeypatch, tmp_path: Pat
     )
     monkeypatch.setattr(book_pipeline, "write_translation_diagnostics", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(book_pipeline, "write_translation_debug_index", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(book_pipeline, "blocking_untranslated_items", lambda _pages: [])
-    monkeypatch.setattr(book_pipeline, "enforce_no_blocking_review_errors", lambda _review: None)
 
     class _FakePrewarmHandle:
         def wait(self):

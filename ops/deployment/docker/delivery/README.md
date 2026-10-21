@@ -181,6 +181,93 @@ http://127.0.0.1:40001
 - 当前主线前端默认 OCR provider 是 `paddle`
 - 页面里显示的大小 / 页数限制来自当前后端运行配置，不应再按旧的 MinerU 固定上游限制理解
 
+# Linux API：本地 Paddle / Dots 二选一 + Hy-MT
+
+这条路径只使用现有 Rust API 和 `book` 任务，不依赖仓库外的本地辅助脚本。
+`paddle_local` 与 `dots_mocr` 是两个
+`local_command` OCR provider；原有 `paddle` 则是另一条需要凭据的远程 provider。
+
+先确保部署源码包含当前的 Dots runner 和相关本地修改。公开的 `latest` 镜像不应
+被假定含有这些未发布代码。从仓库根目录构建 app 镜像：
+
+```bash
+docker build -f ops/deployment/docker/backend/Dockerfile.app -t retainpdf-app:local .
+cd ops/deployment/docker/delivery
+APP_IMAGE=retainpdf-app:local docker compose up -d app
+```
+
+启动前编辑 `docker/app.env`：
+
+- `RETAIN_PADDLE_LOCAL_API_URL` 指向 Paddle 的 `/layout-parsing`，
+  `RETAIN_DOTS_LOCAL_API_URL` 指向 Dots 的 `/v1/chat/completions`；
+  两个端口可独立修改。
+- `RETAIN_DOTS_LOCAL_MODEL` 必须等于 Dots 服务实际暴露的模型名；示例为 `model`。
+- 示例地址 `host.docker.internal` 适用于模型运行在同一 Linux 宿主机且监听容器可达地址的情况。
+  Compose 已为 app 配置 `host-gateway`。如果模型在同一 Docker 网络或另一台服务器，
+  改用对应服务名或私网地址。容器内的 `127.0.0.1` 不能指向其他服务。
+- 依据显存调整 `RETAIN_DOTS_NUM_THREAD`，并在 `docker/auth.local.json` 调整
+  `max_running_jobs`；认证文件里的该值优先于 `RUST_API_MAX_RUNNING_JOBS`。
+
+`docker/auth.local.json` 的 API key 必须改为自己的强随机值。当前 Compose 默认只把
+API 绑定到宿主机 `127.0.0.1:41000`。远程客户端应通过 VPN、SSH 隧道或有独立鉴权
+的 HTTPS 反向代理接入，不要直接公开模型端口和 `41000`。
+
+使用 `X-API-Key` 调用：
+
+```bash
+# 返回 data.upload_id
+curl -fsS -H "X-API-Key: $API_KEY" \
+  -F "file=@report.pdf;type=application/pdf" \
+  http://127.0.0.1:41000/api/v1/uploads
+
+# 将上传 ID 和 Hy-MT 的容器可达地址填入请求；OCR 二选一只改 provider。
+curl -fsS -H "X-API-Key: $API_KEY" -H 'Content-Type: application/json' \
+  -d '{
+    "workflow": "book",
+    "source": {"upload_id": "替换为上传ID"},
+    "ocr": {"provider": "dots_mocr"},
+    "translation": {
+      "model": "hymt",
+      "base_url": "http://host.docker.internal:41011/v1",
+      "api_key": "local",
+      "mode": "fast",
+      "math_mode": "placeholder",
+      "batch_size": 1,
+      "workers": 1
+    },
+    "render": {"render_mode": "auto", "compile_workers": 4},
+    "runtime": {"timeout_seconds": 14400}
+  }' http://127.0.0.1:41000/api/v1/jobs
+
+# 用创建任务返回的 data.job_id 查询状态和下载 PDF
+curl -fsS -H "X-API-Key: $API_KEY" \
+  http://127.0.0.1:41000/api/v1/jobs/任务ID
+curl -fsS -H "X-API-Key: $API_KEY" -o translated.pdf \
+  http://127.0.0.1:41000/api/v1/jobs/任务ID/pdf
+```
+
+若使用本地 Paddle，把 `"ocr": {"provider": "dots_mocr"}` 改为
+`"ocr": {"provider": "paddle_local"}`。Hy-MT 的 `base_url` 端口可按实际服务修改；
+如果 vLLM 使用其他服务名，`model` 也须与之匹配。当前 Hy-MT 专用请求参数
+（包括 `max_tokens=8192`）保持不变。
+请求头 `X-API-Key` 是 RetainPDF 的访问凭据；示例中的
+`translation.api_key="local"` 仅用于未启用模型鉴权的本地 Hy-MT 服务。
+
+公司名保留默认启用（只从全文标题识别）：
+在宿主机运行 CPU GLiNER2 服务。`docker/app.env` 中的 `RETAIN_GLINER2_URL`
+默认是 `http://host.docker.internal:41012`，须确保该地址从容器可达。
+同时必须在 `docker/app.env` 配置 `DEEPSEEK_API_KEY`；本地开发用的
+`pipeline/.env/deepseek.env` 不会自动进入容器。去重后的标题候选会经过每篇一次
+`deepseek-flash` 复核，只发送候选和其出现标题，不发送正文或完整 PDF。
+只使用复核保留的原名称，缺少 Key 或复核失败会在预检中报错，不放行未复核候选。
+无需改任务 JSON、OCR 或 Hy-MT 启动参数，也无需向 app 镜像安装 PyTorch。
+如需关闭，将 `docker/app.env` 中的 `RETAIN_GLINER2_URL=` 置空。
+详见 [GLiNER2 部署与匹配规则](../../../../backend/pipeline/local_models/README.md#optional-gliner2-entity-terminology)。
+
+此配置只适合可信客户端。现有 `local_command` API 仍允许请求携带
+`ocr.options.command` 覆盖服务端命令；若要向不可信用户开放 API，需先在后端
+限制可选 provider、禁止命令覆盖，并限制翻译服务地址。
+
 # 使用域名和 NGINX 反向代理
 
 宿主机 NGINX 只需代理到 `127.0.0.1:40001`，不要直接把域名指向

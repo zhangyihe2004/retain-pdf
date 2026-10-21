@@ -92,7 +92,7 @@ def test_typography_memory_rejects_unstable_samples(tmp_path, monkeypatch) -> No
     assert memory.lookup(feature.key) is None
 
 
-def test_typography_memory_hit_still_runs_final_fit(monkeypatch) -> None:
+def test_memory_hit_keeps_preference_through_original_preprocessing_and_final_fit(monkeypatch) -> None:
     class _Memory:
         def lookup(self, feature_key: str):
             assert feature_key
@@ -103,15 +103,15 @@ def test_typography_memory_hit_still_runs_final_fit(monkeypatch) -> None:
                 confidence=0.8,
             )
 
-    calls: list[tuple[float, float]] = []
+    original_fit = block_seed_payload_factory.fit_translated_block_metrics
+    fit_calls = []
 
-    def _fake_fit(item, text, formula_map, font_size_pt, leading_em, *, page_body_font_size_pt=None):
-        del item, text, formula_map, page_body_font_size_pt
-        calls.append((font_size_pt, leading_em))
-        return 10.2, 0.58
+    def _original_fit(*args, **kwargs):
+        fit_calls.append(True)
+        return original_fit(*args, **kwargs)
 
     monkeypatch.setattr(block_seed_payload_factory, "typography_memory", _Memory())
-    monkeypatch.setattr(block_seed_payload_factory, "fit_translated_block_metrics", _fake_fit)
+    monkeypatch.setattr(block_seed_payload_factory, "fit_translated_block_metrics", _original_fit)
 
     item = {
         "item_id": "p001-b001",
@@ -139,8 +139,11 @@ def test_typography_memory_hit_still_runs_final_fit(monkeypatch) -> None:
         page_height=842.0,
     )
 
-    assert calls == [(13.0, 0.9)]
     assert payload is not None
-    assert payload["font_size_pt"] == 10.2
-    assert payload["leading_em"] == 0.58
+    assert payload["font_size_pt"] == 13.0
+    from retainpdf_pipeline.render.layout.payload.emit import payload_to_render_block
+    block = payload_to_render_block(payload)
+    assert block.fit_flow_text and block.fit_to_box
+    assert block.fit_max_height_pt <= block.inner_bbox[3] - block.inner_bbox[1]
     assert payload["_typography_memory_hit"] is True
+    assert len(fit_calls) == 1

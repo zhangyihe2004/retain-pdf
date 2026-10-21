@@ -12,7 +12,7 @@ from retainpdf_pipeline.render.output.typst.fit_helpers import render_block_fit_
 from retainpdf_pipeline.services.pipeline_shared.events import emit_render_page_progress
 
 
-BuildTypstBlockFn = Callable[[str, RenderBlock], str]
+BuildTypstBlocksFn = Callable[[list[tuple[str, RenderBlock]]], str]
 
 
 def typst_book_prelude(font_family: str) -> list[str]:
@@ -32,13 +32,14 @@ def append_overlay_page_source(
     page_width: float,
     page_height: float,
     translated_items: list[dict],
-    block_builder: BuildTypstBlockFn,
+    block_builder: BuildTypstBlocksFn,
 ) -> None:
     render_blocks = build_render_blocks(translated_items, page_width=page_width, page_height=page_height)
     lines.append(f"#set page(width: {page_width}pt, height: {page_height}pt, margin: 0pt, fill: none)")
-    for index, block in enumerate(render_blocks):
-        block_id = f"p{page_index}_{block.block_id}_{index}"
-        lines.append(block_builder(block_id, block))
+    lines.append(block_builder([
+        (f"p{page_index}_{block.block_id}_{index}", block)
+        for index, block in enumerate(render_blocks)
+    ]))
     if page_index + 1 < page_count:
         lines.append("#pagebreak()")
 
@@ -53,16 +54,17 @@ def append_background_page_source(
     page_width: float,
     page_height: float,
     translated_items: list[dict],
-    block_builder: BuildTypstBlockFn,
+    block_builder: BuildTypstBlocksFn,
 ) -> None:
     render_blocks = build_render_blocks(translated_items, page_width=page_width, page_height=page_height)
     lines.append(f"#set page(width: {page_width}pt, height: {page_height}pt, margin: 0pt, fill: none)")
     lines.append(
         f'#place(top + left, dx: 0pt, dy: 0pt, image("{source_rel}", page: {source_page_idx + 1}, width: {page_width}pt))'
     )
-    for index, block in enumerate(render_blocks):
-        block_id = f"bgp{page_index}_{block.block_id}_{index}"
-        lines.append(block_builder(block_id, block))
+    lines.append(block_builder([
+        (f"bgp{page_index}_{block.block_id}_{index}", block)
+        for index, block in enumerate(render_blocks)
+    ]))
     if page_index + 1 < page_count:
         lines.append("#pagebreak()")
 
@@ -71,7 +73,7 @@ def build_book_overlay_source_lines(
     page_specs: list[tuple[float, float, list[dict]]],
     *,
     font_family: str,
-    block_builder: BuildTypstBlockFn,
+    block_builder: BuildTypstBlocksFn,
 ) -> list[str]:
     lines = typst_book_prelude(font_family)
     page_count = len(page_specs)
@@ -100,7 +102,7 @@ def build_book_background_source_lines(
     *,
     work_dir: Path,
     font_family: str,
-    block_builder: BuildTypstBlockFn,
+    block_builder: BuildTypstBlocksFn,
 ) -> list[str]:
     source_rel = os.path.relpath(source_pdf_path, work_dir)
     lines = typst_book_prelude(font_family)
@@ -127,7 +129,7 @@ def build_book_background_source_lines(
 
 
 __all__ = [
-    "BuildTypstBlockFn",
+    "BuildTypstBlocksFn",
     "append_background_page_source",
     "append_overlay_page_source",
     "build_book_background_source_lines",

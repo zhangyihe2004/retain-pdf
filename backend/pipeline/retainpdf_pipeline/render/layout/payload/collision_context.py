@@ -54,3 +54,14 @@ def collision_fit_item(payload: dict) -> dict:
         "_heavy_dense_small_box": payload["heavy_dense_small_box"],
         "_short_body_inherited_font_floor_pt": payload.get("_short_body_inherited_font_floor_pt", 0.0),
     }
+
+
+def flow_height_limit(rect: list[float], boxes: list[list[float]]) -> float:
+    """Nearest spatial barrier, with one gap; no font or reading-order input."""
+    left, top, right, bottom = rect
+    height = bottom - top
+    for box in boxes:
+        if box[1] <= top or box[3] <= bottom or min(right, box[2]) <= max(left, box[0]):
+            continue
+        height = min(height, max(0.0, box[1] - top - VERTICAL_COLLISION_GAP_PT))
+    return height

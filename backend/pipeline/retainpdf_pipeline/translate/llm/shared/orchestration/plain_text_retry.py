@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import time
 
+import requests
+
 from retainpdf_pipeline.translate.artifacts import TranslationDiagnosticsCollector
+from retainpdf_pipeline.translate.llm.providers.deepseek.client import is_hy_mt2_model
+from retainpdf_pipeline.translate.llm.shared.executor_context import execution_enabled
 from retainpdf_pipeline.translate.llm.validation.errors import EmptyTranslationError
 from retainpdf_pipeline.translate.llm.validation.errors import EnglishResidueError
 from retainpdf_pipeline.translate.llm.validation.errors import MathDelimiterError
@@ -14,6 +18,7 @@ from retainpdf_pipeline.translate.llm.validation.errors import UnexpectedPlaceho
 from retainpdf_pipeline.translate.llm.placeholder_transform import has_formula_placeholders
 from retainpdf_pipeline.translate.llm.shared.control_context import TranslationControlContext
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_actions import try_plain_text_request as _try_plain_text_request
+from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_actions import try_deepseek_plain_text_fallback as _try_deepseek_plain_text_fallback
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_actions import try_protocol_shell_salvage as _try_protocol_shell_salvage
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_actions import try_raw_plain_text_fallback as _try_raw_plain_text_fallback
 from retainpdf_pipeline.translate.llm.shared.orchestration.plain_text_retry_finalize import finalize_plain_text_failure as _finalize_plain_text_failure
@@ -54,6 +59,63 @@ def run_plain_text_attempts(
     runtime: PlainTextRetryRuntime,
 ) -> PlainTextResult:
     plain_attempts = context.fallback_policy.plain_text_attempts
+    if is_hy_mt2_model(model) and not execution_enabled():
+        try:
+            return _try_plain_text_request(
+                item,
+                api_key=api_key,
+                model=model,
+                base_url=base_url,
+                request_label=request_label,
+                context=context,
+                diagnostics=diagnostics,
+                plain_timeout_s=plain_timeout_s,
+                route_prefix=route_prefix,
+                attempt=1,
+                plain_attempts=2,
+                runtime=runtime,
+            )
+        except Exception as exc:
+            if not isinstance(exc, _PARSE_ERRORS + (requests.RequestException,)) and not runtime.is_transport_error_fn(exc):
+                raise
+            if request_label:
+                print(f"{request_label}: Hy-MT failed ({type(exc).__name__}), fallback to DeepSeek with the same prompt", flush=True)
+            if diagnostics is not None:
+                diagnostics.emit(
+                    kind="hymt_deepseek_fallback",
+                    item_id=str(item.get("item_id", "") or ""),
+                    page_idx=item.get("page_idx"),
+                    severity="warning",
+                    message=f"Hy-MT failed: {type(exc).__name__}; trying DeepSeek once",
+                    retryable=True,
+                )
+            try:
+                return _try_deepseek_plain_text_fallback(
+                    item,
+                    model=model,
+                    request_label=request_label,
+                    context=context,
+                    diagnostics=diagnostics,
+                    plain_timeout_s=plain_timeout_s,
+                    route_prefix=route_prefix,
+                    runtime=runtime,
+                )
+            except Exception as fallback_exc:
+                if request_label:
+                    print(f"{request_label}: DeepSeek fallback failed: {type(fallback_exc).__name__}: {fallback_exc}", flush=True)
+                return terminal_payloads.translation_failed_payload(
+                    item,
+                    context=context,
+                    route_path=route_prefix + ["deepseek_fallback", "failed"],
+                    degradation_reason="deepseek_fallback_failed",
+                    error_taxonomy="transport" if runtime.is_transport_error_fn(fallback_exc) else "validation",
+                    error_trace=[
+                        {"type": "primary", "code": type(exc).__name__},
+                        {"type": "fallback", "code": type(fallback_exc).__name__},
+                    ],
+                    fallback_to="dead_letter_queue",
+                    dead_letter=True,
+                )
     last_error: Exception | None = None
     for attempt in range(1, plain_attempts + 1):
         started = time.perf_counter()

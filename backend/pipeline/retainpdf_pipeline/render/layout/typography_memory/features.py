@@ -19,7 +19,7 @@ from retainpdf_pipeline.render.layout.typography.measurement import formula_rati
 from retainpdf_pipeline.render.layout.typography.measurement import source_visual_line_count
 
 
-TYPOGRAPHY_MEMORY_FEATURE_VERSION = "typography_memory_features_v1"
+TYPOGRAPHY_MEMORY_FEATURE_VERSION = "typography_memory_features_v4_original_geometry"
 
 
 @dataclass(frozen=True)

@@ -1,17 +1,28 @@
 import re
 
-from retainpdf_pipeline.render.layout.inline_content.core.inline_math import apply_to_non_math_segments
 from retainpdf_pipeline.render.layout.inline_content.core.inline_math import build_direct_typst_passthrough_markdown
 from retainpdf_pipeline.render.layout.inline_content.core.inline_math import demote_text_heavy_inline_math
-from retainpdf_pipeline.render.layout.inline_content.core.inline_math import escape_markdown_literal_asterisks
+from retainpdf_pipeline.render.layout.inline_content.core.inline_math import (
+    escape_literal_asterisks_preserving_emphasis,
+)
 from retainpdf_pipeline.render.layout.inline_content.core.inline_math import surround_inline_math_with_spaces
 from retainpdf_pipeline.render.layout.inline_content.fallback.latex_normalizer import normalize_formula_for_latex_math
 from retainpdf_pipeline.render.layout.text_analysis import analyze_text
 
 
 def _normalize_text_chunk(text: str) -> str:
-    normalized_lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in (text or "").strip().split("\n")]
-    return "\n".join(line for line in normalized_lines if line)
+    normalized_lines: list[str] = []
+    pending_blank = False
+    for raw_line in (text or "").strip().split("\n"):
+        line = re.sub(r"[ \t\r\f\v]+", " ", raw_line).strip()
+        if not line:
+            pending_blank = bool(normalized_lines)
+            continue
+        if pending_blank:
+            normalized_lines.append("")
+        normalized_lines.append(line)
+        pending_blank = False
+    return "\n".join(normalized_lines)
 
 
 def _sanitize_existing_inline_math_for_markdown(text: str) -> str:
@@ -39,7 +50,7 @@ def build_markdown_from_direct_text(
 ) -> str:
     markdown = _normalize_text_chunk(text)
     markdown = demote_text_heavy_inline_math(markdown)
-    markdown = apply_to_non_math_segments(markdown, escape_markdown_literal_asterisks)
+    markdown = escape_literal_asterisks_preserving_emphasis(markdown)
     if normalize_existing_inline_math:
         markdown = _sanitize_existing_inline_math_for_markdown(markdown)
     markdown = surround_inline_math_with_spaces(markdown)
@@ -62,6 +73,17 @@ def build_markdown_paragraph(item: dict) -> str:
         protected,
         item.get("formula_map", []),
     )
+
+
+def escape_literal_footnote_markers(item: dict, markdown: str) -> str:
+    source = str(item.get("source_text") or "").strip()
+    role = str(item.get("structure_role") or item.get("semantic_role") or "")
+    if not re.match(r">{2,}\s", source):
+        return markdown
+    if "footnote" not in role and not re.search(r"\b(?:FINRA|non-US (?:affiliate|subsidiar(?:y|ies))|research analyst)\b", source, re.I):
+        return markdown
+    # This source marker is a literal broker footnote, not a nested quote.
+    return re.sub(r"^(\s*)(>{2,})(?=\s)", lambda m: m[1] + "\\>" * len(m[2]), markdown, count=1)
 
 
 def build_direct_typst_passthrough_text(text: str) -> str:

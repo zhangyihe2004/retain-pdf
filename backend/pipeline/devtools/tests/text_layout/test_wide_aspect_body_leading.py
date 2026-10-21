@@ -71,7 +71,11 @@ class WideAspectBodyLeadingTests(unittest.TestCase):
         blocks = build_render_blocks(items, page_width=612.0, page_height=792.0)
         dense_block = next(block for block in blocks if block.block_id == "item-1")
 
-        self.assertLessEqual(dense_block.font_size_pt, 10.35)
+        # The payload carries a source-style preference, not a prematurely
+        # fitted font. Real width/height are enforced by the shared fitter.
+        self.assertTrue(dense_block.fit_flow_text)
+        self.assertTrue(dense_block.fit_to_box)
+        self.assertLessEqual(dense_block.fit_max_height_pt, dense_block.inner_bbox[3] - dense_block.inner_bbox[1])
 
     def test_wide_aspect_body_relaxes_leading_when_vertical_slack_exists(self):
         text = (

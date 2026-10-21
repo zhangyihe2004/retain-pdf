@@ -10,9 +10,11 @@ from retainpdf_pipeline.translate.artifacts import classify_provider_family
 from retainpdf_pipeline.translate.core.terms import AbbreviationEntry
 from retainpdf_pipeline.translate.core.terms import GlossaryEntry
 from retainpdf_pipeline.translate.core.terms import build_terms_guidance
+from retainpdf_pipeline.translate.core.terms import build_hy_mt_terms_guidance
 from retainpdf_pipeline.translate.core.terms import matched_abbreviation_entries
 from retainpdf_pipeline.translate.core.terms import matched_glossary_entries
 from retainpdf_pipeline.translate.core.terms import normalize_glossary_entries
+from retainpdf_pipeline.translate.core.terms.entities import matched_entity_entries
 from retainpdf_pipeline.translate.llm.shared.tail_retry_queue import TranslationTailQueue
 
 
@@ -114,6 +116,8 @@ class TranslationControlContext:
     batch_policy: BatchPolicy = field(default_factory=BatchPolicy)
     engine_profile_name: str = "balanced"
     glossary_entries: list[GlossaryEntry] = field(default_factory=list)
+    entity_names: tuple[str, ...] = ()
+    _manual_glossary_entries: list[GlossaryEntry] | None = field(default=None, compare=False, repr=False)
     abbreviation_entries: list[AbbreviationEntry] = field(default_factory=list)
     retrieval_entries: list[RetrievalEvidence] = field(default_factory=list)
     term_scope_source_text_count: int = 0
@@ -130,6 +134,13 @@ class TranslationControlContext:
     @property
     def terms_guidance(self) -> str:
         return build_terms_guidance(
+            glossary_entries=self.glossary_entries,
+            abbreviation_entries=self.abbreviation_entries,
+        )
+
+    @property
+    def hy_mt_terms_guidance(self) -> str:
+        return build_hy_mt_terms_guidance(
             glossary_entries=self.glossary_entries,
             abbreviation_entries=self.abbreviation_entries,
         )
@@ -202,38 +213,55 @@ class TranslationControlContext:
 
     def scoped_to_source_texts(self, texts: Iterable[str]) -> "TranslationControlContext":
         text_list = [text for text in texts if text]
+        # Keep the document pool through batch -> item -> retry re-scoping.
+        manual_glossary = (
+            self._manual_glossary_entries
+            if self._manual_glossary_entries is not None
+            else self.glossary_entries
+        )
         glossary_mode = _normalize_glossary_mode(self.glossary_mode)
         if glossary_mode == "off":
             return replace(
                 self,
                 glossary_entries=[],
+                entity_names=(),
                 abbreviation_entries=[],
                 term_scope_source_text_count=len(text_list),
                 term_scope_glossary_total_count=len(self.glossary_entries),
                 term_scope_abbreviation_total_count=len(self.abbreviation_entries),
             )
-        if glossary_mode == "all":
+        if glossary_mode == "all" and not self.entity_names:
             return self
-        if not text_list or not (self.glossary_entries or self.abbreviation_entries):
+        if (not text_list and not self.entity_names) or not (manual_glossary or self.abbreviation_entries or self.entity_names):
             return self
         cache_key = tuple(text_list)
         cached_scope = self._term_scope_cache.get(cache_key)
         if cached_scope is None:
             source_text = "\n".join(text_list)
+            matched_manual = (
+                manual_glossary if glossary_mode == "all"
+                else matched_glossary_entries(manual_glossary, source_text)
+            )
             cached_scope = (
-                matched_glossary_entries(self.glossary_entries, source_text),
-                matched_abbreviation_entries(self.abbreviation_entries, source_text),
+                [*matched_manual, *matched_entity_entries(self.entity_names, text_list, matched_manual)],
+                self.abbreviation_entries if glossary_mode == "all"
+                else matched_abbreviation_entries(self.abbreviation_entries, source_text),
             )
             self._term_scope_cache[cache_key] = cached_scope
         matched_glossary, matched_abbreviations = cached_scope
-        if len(matched_glossary) == len(self.glossary_entries) and len(matched_abbreviations) == len(self.abbreviation_entries):
+        if (
+            not self.entity_names
+            and len(matched_glossary) == len(self.glossary_entries)
+            and len(matched_abbreviations) == len(self.abbreviation_entries)
+        ):
             return self
         return replace(
             self,
             glossary_entries=matched_glossary,
+            _manual_glossary_entries=manual_glossary if self.entity_names else self._manual_glossary_entries,
             abbreviation_entries=matched_abbreviations,
             term_scope_source_text_count=len(text_list),
-            term_scope_glossary_total_count=len(self.glossary_entries),
+            term_scope_glossary_total_count=len(manual_glossary) + len(self.entity_names),
             term_scope_abbreviation_total_count=len(self.abbreviation_entries),
         )
 

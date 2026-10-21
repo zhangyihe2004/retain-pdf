@@ -20,8 +20,6 @@ from retainpdf_pipeline.translate.public import resolve_page_range
 from retainpdf_pipeline.translate.public import write_translation_debug_index
 from retainpdf_pipeline.translate.public import write_translation_diagnostics
 from retainpdf_pipeline.translate.public import GlossaryEntry
-from retainpdf_pipeline.translate.public import blocking_untranslated_items
-from retainpdf_pipeline.translate.public import enforce_no_blocking_review_errors
 
 
 def run_book_pipeline(
@@ -112,17 +110,6 @@ def run_book_pipeline(
     translated_items_total = translation_summary["translated_items"]
     for page_summary in translation_summary["summaries"]:
         print(f"page {page_summary['page_idx'] + 1}: translated {page_summary['translated_items']}/{page_summary['total_items']}")
-    blocking_untranslated = blocking_untranslated_items(translation_summary["translated_pages_map"])
-    if blocking_untranslated:
-        preview = ", ".join(
-            f"p{int(item['page_idx']) + 1}:{item['item_id']}:{item['reason']}"
-            for item in blocking_untranslated[:8]
-        )
-        raise RuntimeError(
-            f"translation export gate blocked: unresolved_translation_count={len(blocking_untranslated)} preview={preview}"
-        )
-    enforce_no_blocking_review_errors(translation_summary.get("translation_review"))
-
     render_prewarm_manifest_path = prewarm_manifest_path_from_artifacts_dir(output_dir.parent / ARTIFACTS_DIR_NAME)
     render_preprocess_started = time.perf_counter()
     render_document_analysis = _try_build_render_document_analysis(

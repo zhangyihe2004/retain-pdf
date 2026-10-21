@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
+from retainpdf_pipeline.render.layout.markdown_lists import MARKDOWN_LIST_MARKER_RE
 from retainpdf_pipeline.render.layout.text_analysis import analyze_text
 from retainpdf_pipeline.render.layout.text_analysis import math_token_body
 from retainpdf_pipeline.render.layout.text_analysis import normalize_direct_typst_math_boundaries
@@ -12,12 +14,13 @@ from retainpdf_pipeline.render.layout.text_analysis import TextTokenKind
 
 
 MARKDOWN_EMPHASIS_RE = re.compile(
-    r"(?<![\\*])(?P<marker>\*\*|\*)"
-    r"(?=\S)"
-    r"(?P<body>[^*\n]*?\S)"
+    r"(?<![\\*])(?P<marker>\*{2,3}|(?P<single>\*)(?=\S))(?!\*)"
+    r"(?P<body>(?:(?!\n[^\S\n]*\n)(?:[^*]|\*(?!\*)[^*\n]+\*(?!\*)|\*\*(?!\*)[^*\n]+\*\*(?!\*)))+?)"
+    r"(?(single)(?<!\s))(?<!\\)"
     r"(?P=marker)"
     r"(?!\*)"
 )
+MARKDOWN_CODE_RE = re.compile(r"(?<![\\`])(?P<fence>`+)(?!`)[\s\S]*?(?<!`)(?P=fence)(?!`)")
 TEXT_HEAVY_INLINE_MATH_MIN_TEXT_CHARS = 10
 TEXT_HEAVY_INLINE_MATH_MIN_TEXT_BLOCKS = 2
 ANGLE_EXPECTATION_RE = re.compile(
@@ -36,21 +39,70 @@ def apply_to_non_math_segments(text: str, replacer) -> str:
 
 
 def escape_markdown_literal_asterisks(text: str) -> str:
-    return (text or "").replace("*", r"\*")
+    return re.sub(r"\\.|\*", lambda m: r"\*" if m[0] == "*" else m[0], text or "")
+
+
+def _markdown_punctuation(char: str) -> bool:
+    return bool(char) and unicodedata.category(char)[0] in "PS"
 
 
 def escape_literal_asterisks_preserving_emphasis(text: str) -> str:
     source = text or ""
     if "*" not in source:
         return source
+    # Preserve code/math verbatim without splitting emphasis that encloses them.
+    prefix = "PDFTRINLINE"
+    while prefix in source:
+        prefix += "X"
+    protected: dict[str, str] = {}
+
+    def protect(value: str) -> str:
+        token = f"{prefix}{len(protected)}END"
+        protected[token] = value
+        return token
+
+    def restore(value: str) -> str:
+        for token, original in protected.items():
+            value = value.replace(token, original)
+        return value
+
+    source = MARKDOWN_CODE_RE.sub(lambda m: protect(m[0]), source)
+    source = re.sub(r"\\.", lambda m: protect(m[0]), source)
+    # A broker's '* = ...' / '** = ...' annotation is a literal marker,
+    # including when several definitions share a single OCR line.
+    source = re.sub(r"(?<!\S)\*{1,3}(?=[^\S\n]+=)", lambda m: protect(escape_markdown_literal_asterisks(m[0])), source)
+    source = MARKDOWN_LIST_MARKER_RE.sub(lambda m: protect(m[0]), source)
+    source = "".join(
+        protect(token.value) if token.kind in RAW_MATH_TOKEN_KINDS else token.value
+        for token in analyze_text(source).tokens
+    )
     chunks: list[str] = []
     last_end = 0
     for match in MARKDOWN_EMPHASIS_RE.finditer(source):
+        body = match["body"].strip()
+        if not body:
+            continue
+        if "*" in body:
+            body = escape_literal_asterisks_preserving_emphasis(body)
+        value = match["marker"] + body + match["marker"]
+        if len(match["marker"]) >= 2:
+            visible_body = restore(body)
+            before = restore(source[:match.start()])[-1:]
+            after = restore(source[match.end():])[:1]
+            # CommonMark flanking rules apply equally to both boundaries.
+            if before and not before.isspace() and not _markdown_punctuation(before) and (
+                match["body"][0].isspace() or _markdown_punctuation(visible_body[0])
+            ):
+                value = " " + value
+            if after and not after.isspace() and not _markdown_punctuation(after) and (
+                match["body"][-1].isspace() or _markdown_punctuation(visible_body[-1])
+            ):
+                value += " "
         chunks.append(escape_markdown_literal_asterisks(source[last_end : match.start()]))
-        chunks.append(match.group(0))
+        chunks.append(value)
         last_end = match.end()
     chunks.append(escape_markdown_literal_asterisks(source[last_end:]))
-    return "".join(chunks)
+    return restore("".join(chunks))
 
 
 def surround_inline_math_with_spaces(markdown: str) -> str:
@@ -309,6 +361,6 @@ def sanitize_direct_typst_inline_math(text: str) -> str:
 def build_direct_typst_passthrough_markdown(text: str) -> str:
     normalized = normalize_direct_typst_math_boundaries(str(text or "").strip())
     normalized = normalize_direct_typst_inline_math_whitespace(normalized)
-    markdown = apply_to_non_math_segments(normalized, escape_literal_asterisks_preserving_emphasis)
+    markdown = escape_literal_asterisks_preserving_emphasis(normalized)
     markdown = sanitize_direct_typst_inline_math(markdown)
     return surround_inline_math_with_spaces(markdown)

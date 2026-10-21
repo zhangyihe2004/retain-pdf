@@ -25,6 +25,7 @@ DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_API_KEY_ENV = "DEEPSEEK_API_KEY"
 DEFAULT_API_KEY_FILE = "deepseek.env"
+HY_MT2_MODEL_NAMES = {"hymt", "hy-mt2"}
 STREAM_RESPONSES_ENV = "PDF_TRANSLATOR_DEEPSEEK_STREAM"
 HTTP_RETRY_ATTEMPTS = transport.HTTP_RETRY_ATTEMPTS
 DNS_RETRY_MIN_ATTEMPTS = transport.DNS_RETRY_MIN_ATTEMPTS
@@ -165,6 +166,11 @@ def _provider_supports_json_schema(*, model: str, base_url: str) -> bool:
     return True
 
 
+def is_hy_mt2_model(model: str) -> bool:
+    normalized = str(model or "").strip().lower()
+    return normalized in HY_MT2_MODEL_NAMES or normalized.startswith("hy-mt2-")
+
+
 def _fallback_response_format(response_format: dict[str, Any] | None) -> dict[str, str] | None:
     if not _supports_response_schema_fallback(response_format):
         return response_format
@@ -244,7 +250,10 @@ def _read_streaming_chat_content(response: requests.Response) -> tuple[str, dict
     for raw_line in response.iter_lines(decode_unicode=True):
         if raw_line is None:
             continue
-        line = raw_line.strip()
+        if isinstance(raw_line, bytes):
+            line = raw_line.decode("utf-8", errors="replace").strip()
+        else:
+            line = str(raw_line).strip()
         if not line or not line.startswith("data:"):
             continue
         payload = line[5:].strip()
@@ -271,6 +280,8 @@ def request_chat_content(
     timeout: int = 120,
     request_label: str = "",
     max_attempts: int | None = None,
+    stream: bool | None = None,
+    allow_transport_recovery: bool = True,
 ) -> str:
     from retainpdf_pipeline.translate.llm.shared.executor_context import execution_enabled, runtime
     if execution_enabled():
@@ -293,11 +304,26 @@ def request_chat_content(
         "temperature": temperature,
         "messages": messages,
     }
+    # Hy-MT2 is exposed by vLLM through the same Chat Completions endpoint,
+    # but its model card recommends these sampling defaults. Keep this scoped
+    # to Hy-MT2 so existing providers retain their current request contract.
+    if is_hy_mt2_model(model):
+        body.update(
+            {
+                "temperature": 0.7,
+                "top_p": 0.6,
+                "top_k": 20,
+                "repetition_penalty": 1.05,
+                "max_tokens": 8192,
+            }
+        )
     # DashScope Qwen3.8 Flash defaults to thinking. Translation does not need
     # this extra generation pass; leave other providers/models untouched.
     if model.strip().lower() == "qwen3.8-flash" and _hostname_from_base_url(base_url) == "dashscope.aliyuncs.com":
         body["enable_thinking"] = False
-    use_stream = should_use_stream_responses()
+    if model.strip().lower() == "deepseek-flash":
+        body.update({"thinking": {"type": "disabled"}, "max_tokens": 8192})
+    use_stream = should_use_stream_responses() if stream is None else stream
     if use_stream:
         body["stream"] = True
     if active_response_format is not None:
@@ -383,6 +409,8 @@ def request_chat_content(
                     raise ValueError("Stream response did not contain any content.")
             else:
                 data: dict[str, Any] = response.json()
+                if model.strip().lower() == "deepseek-flash" and data["choices"][0].get("finish_reason") != "stop":
+                    raise ValueError("DeepSeek translation did not finish normally.")
                 content = data["choices"][0]["message"]["content"]
                 usage = data.get("usage")
             if diagnostics is not None and isinstance(usage, dict):
@@ -447,10 +475,10 @@ def request_chat_content(
                     print(f"{request_label}: response_format fallback json_schema -> json_object after 400", flush=True)
                 continue
             dns_failure = is_dns_resolution_error(exc)
-            if dns_failure and attempt_limit < dns_retry_limit:
+            if allow_transport_recovery and dns_failure and attempt_limit < dns_retry_limit:
                 attempt_limit = dns_retry_limit
             retryable_transport = _is_retryable_http_error(exc) and is_transport_error(exc)
-            if retryable_transport and transport_recovery_seconds > 0:
+            if allow_transport_recovery and retryable_transport and transport_recovery_seconds > 0:
                 if transport_recovery_started_at is None:
                     transport_recovery_started_at = time.perf_counter()
                 recovery_elapsed = time.perf_counter() - transport_recovery_started_at

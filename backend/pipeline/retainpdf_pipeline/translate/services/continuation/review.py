@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 import time
 from typing import Callable
+
+import requests
+
+from retainpdf_pipeline.foundation.shared.local_env import get_secret
+from retainpdf_pipeline.translate.llm.providers.deepseek.client import is_hy_mt2_model
 from retainpdf_pipeline.translate.llm.shared.executor_context import scoped_request, execution_enabled
 
 from retainpdf_pipeline.translate.prompt_loader import load_prompt
@@ -22,6 +27,33 @@ def _build_messages(pairs: list[dict]) -> list[dict[str, str]]:
     ]
 
 
+def _request_deepseek_review(messages: list[dict[str, str]]) -> str:
+    key = get_secret(env_var="DEEPSEEK_API_KEY", env_file_name="deepseek.env")
+    if not key:
+        raise RuntimeError("Continuation review requires DEEPSEEK_API_KEY or pipeline/.env/deepseek.env")
+    # Independent review must not inherit the Rust/Hy-MT translation worker.
+    response = requests.post(
+        "https://api.deepseek.com/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": "deepseek-flash",
+            "messages": messages,
+            "thinking": {"type": "disabled"},
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "max_tokens": 2048,
+            "stream": False,
+        },
+        timeout=(10, 120),
+    )
+    response.raise_for_status()
+    choice = response.json()["choices"][0]
+    if choice.get("finish_reason") != "stop":
+        # Incomplete decisions use the existing advisory parse fallback.
+        return ""
+    return choice["message"]["content"]
+
+
 def review_candidate_pairs(
     pairs: list[dict],
     *,
@@ -35,7 +67,8 @@ def review_candidate_pairs(
 ) -> dict[str, str]:
     if not pairs:
         return {}
-    max_retries = 0 if execution_enabled() else max(0, int(max_retries))
+    use_deepseek = is_hy_mt2_model(model)
+    max_retries = 0 if execution_enabled() and not use_deepseek else max(0, int(max_retries))
     sleep = sleep_fn or time.sleep
     last_error: Exception | None = None
     # Transient upstream errors (Timeout/429/5xx/connection) get a limited
@@ -43,16 +76,19 @@ def review_candidate_pairs(
     # balance/Key hint and are never retried.
     for attempt in range(max_retries + 1):
         try:
-            content = scoped_request("continuation", sorted((str(pair.get("prev_item_id", "")),str(pair.get("next_item_id", ""))) for pair in pairs), request_chat_content_fn,
-                _build_messages(pairs),
-                api_key=api_key,
-                model=model,
-                base_url=base_url,
-                temperature=0.0,
-                response_format=CONTINUATION_REVIEW_RESPONSE_SCHEMA,
-                timeout=120,
-                request_label=request_label,
-            )
+            if use_deepseek:
+                content = _request_deepseek_review(_build_messages(pairs))
+            else:
+                content = scoped_request("continuation", sorted((str(pair.get("prev_item_id", "")),str(pair.get("next_item_id", ""))) for pair in pairs), request_chat_content_fn,
+                    _build_messages(pairs),
+                    api_key=api_key,
+                    model=model,
+                    base_url=base_url,
+                    temperature=0.0,
+                    response_format=CONTINUATION_REVIEW_RESPONSE_SCHEMA,
+                    timeout=120,
+                    request_label=request_label,
+                )
             try:
                 return parse_continuation_review_response(content)
             except ValueError as parse_error:

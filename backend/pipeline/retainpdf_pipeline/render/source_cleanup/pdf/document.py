@@ -192,6 +192,10 @@ def _save_pdf_atomic(pdf: pikepdf.Pdf, output_pdf_path: Path) -> None:
     if len(str(tmp_path)) > 240 and os.name == "nt":
         tmp_path = output_pdf_path.parent / f".rpsave-{os.getpid()}.tmp.pdf"
     try:
+        # pikepdf reads XMP on save; only streams are valid /Metadata references.
+        metadata = pdf.Root.get(Name.Metadata)
+        if metadata is not None and not isinstance(metadata, pikepdf.Stream):
+            del pdf.Root[Name.Metadata]
         pdf.save(
             tmp_path,
             object_stream_mode=pikepdf.ObjectStreamMode.generate,

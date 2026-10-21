@@ -257,6 +257,12 @@ provider 原始 OCR 不应直接进入翻译/渲染主线。
   负责统一拼装 block record
 - `normalize.py`
   负责 `bbox/polygon/segments/lines` 等通用归一化 helper
+- `text_geometry.py`
+  复用原 Paddle 适配器的折行估计和片段范围继承；Paddle 保持原处理顺序，
+  Dots 文本块使用 `synthetic_wrap` 估计视觉行，不把语义段落数当作视觉行数。
+  合成行仅用于几何估计，不改变原始块坐标、正文或语义换行；Dots 低于原折行高度界限的
+  有效单行文本复用 `block_fallback`，高框、多行及非文本块不新增单行框。纯文本合成行的翻译输入沿用完整原文，
+  不拼接估计碎片；真实行和公式片段仍走原路径。`bbox_precision` 标记会透传至翻译产物。
 - `relations.py`
   提供“按前一个锚点推断当前块语义”的页内关系骨架
 - `specs.py`

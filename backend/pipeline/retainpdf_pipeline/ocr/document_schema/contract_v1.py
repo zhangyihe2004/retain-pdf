@@ -157,8 +157,13 @@ def _build_content(block: dict, *, page_index: int, order: int) -> dict:
     text = str(block.get("text", "") or "")
     if text:
         content["text"] = text
-    explicit_line_texts = [line.strip() for line in text.splitlines() if line.strip()]
-    line_texts = explicit_line_texts if len(explicit_line_texts) >= 2 else line_texts_from_lines(block.get("lines", []))
+    explicit_text_flow = str(existing.get("text_flow", "") or "").strip().lower()
+    if explicit_text_flow == "flow":
+        line_texts = []
+        content["text_flow"] = "flow"
+    else:
+        explicit_line_texts = [line.strip() for line in text.splitlines() if line.strip()]
+        line_texts = explicit_line_texts if len(explicit_line_texts) >= 2 else line_texts_from_lines(block.get("lines", []))
     if line_texts:
         content["line_texts"] = line_texts
         content["text_flow"] = classify_text_flow_for_role(

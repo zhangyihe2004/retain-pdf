@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO_SCRIPTS_ROOT))
 from retainpdf_pipeline.translate.llm.providers.deepseek import client as deepseek_client
 from retainpdf_pipeline.translate.llm.providers.deepseek import translation_client
 from retainpdf_pipeline.translate.core.context import build_item_context
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import group_member_json_user_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import group_member_json_user_prompt
 
 
 def test_translate_single_item_plain_text_uses_plain_text_protocol() -> None:

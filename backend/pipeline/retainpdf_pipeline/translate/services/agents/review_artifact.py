@@ -33,6 +33,12 @@ def build_translation_review(
                         or item.get("translation_unit_protected_translated_text")
                         or ""
                     ),
+                    "protected_translated_text": str(
+                        item.get("protected_translated_text")
+                        or item.get("translation_unit_protected_translated_text")
+                        or item.get("group_protected_translated_text")
+                        or ""
+                    ),
                     "final_status": str(item.get("final_status", "") or ""),
                     "translation_diagnostics": item.get("translation_diagnostics") or {},
                 }

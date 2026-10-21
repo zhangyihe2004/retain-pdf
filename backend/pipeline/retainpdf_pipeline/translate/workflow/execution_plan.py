@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from retainpdf_pipeline.translate.artifacts import TranslationRunDiagnostics
@@ -16,6 +17,7 @@ from retainpdf_pipeline.translate.services.policy import build_book_translation_
 from retainpdf_pipeline.translate.services.context.session_context import build_translation_context_from_policy
 from retainpdf_pipeline.translate.services.terms import GlossaryEntry
 from retainpdf_pipeline.translate.services.terms import normalize_glossary_entries
+from retainpdf_pipeline.translate.services.terms.entity_detection import detect_document_entities
 from retainpdf_pipeline.translate.workflow.scheduling.allocation import adaptive_floor_limit
 from retainpdf_pipeline.translate.workflow.scheduling.allocation import prefix_cache_warmup_enabled
 from retainpdf_pipeline.translate.workflow.scheduling.allocation import provider_adaptive_initial_limit
@@ -105,6 +107,9 @@ def _build_translation_execution_plan(request, journals) -> TranslationExecution
         glossary_mode=request.glossary_mode,
         memory_mode=request.memory_mode,
     )
+    entity_names = detect_document_entities(data, glossary_mode=request.glossary_mode)
+    if entity_names:
+        translation_context = replace(translation_context, entity_names=entity_names)
     effective_workers = max(1, request.workers)
     initial_concurrency_limit = provider_adaptive_initial_limit(
         workers=effective_workers,

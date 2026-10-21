@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from retainpdf_pipeline.foundation.config import fonts
-from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_block
+from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_blocks
 from retainpdf_pipeline.render.output.typst.source_pages import build_book_background_source_lines
 from retainpdf_pipeline.render.output.typst.source_pages import build_book_overlay_source_lines
 
@@ -30,9 +30,8 @@ def build_typst_book_overlay_source(
     lines = build_book_overlay_source_lines(
         page_specs,
         font_family=font_family,
-        block_builder=lambda block_id, block: build_typst_block(
-            block_id,
-            block,
+        block_builder=lambda blocks: build_typst_blocks(
+            blocks,
             include_fill=include_cover_rect,
         ),
     )
@@ -50,6 +49,6 @@ def build_typst_book_background_source(
         page_specs,
         work_dir=work_dir,
         font_family=font_family,
-        block_builder=lambda block_id, block: build_typst_block(block_id, block, include_fill=True),
+        block_builder=lambda blocks: build_typst_blocks(blocks, include_fill=True),
     )
     return "\n".join(lines) + "\n"

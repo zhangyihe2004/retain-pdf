@@ -187,7 +187,7 @@ def test_direct_typst_continuation_group_preserves_math_mode_on_group_unit() -> 
     assert units[0]["math_mode"] == "direct_typst"
 
 
-def test_long_continuation_group_stays_grouped_when_not_formula_heavy() -> None:
+def test_long_continuation_group_is_split_back_to_single_units() -> None:
     def member(item_id: str, source: str):
         return {
             "item_id": item_id,
@@ -207,13 +207,15 @@ def test_long_continuation_group_stays_grouped_when_not_formula_heavy() -> None:
     payload = [member("a", text_a), member("b", text_b)]
     units = pending_translation_items(payload)
 
-    assert [unit["item_id"] for unit in units] == ["__cg__:long-continuation"]
-    assert units[0]["continuation_group"] == "cg-long"
-    assert payload[0]["translation_unit_kind"] == "group"
-    assert payload[1]["translation_unit_kind"] == "group"
+    assert [unit["item_id"] for unit in units] == ["a", "b"]
+    assert all(unit["continuation_group"] == "" for unit in units)
+    assert all(unit["translation_unit_kind"] == "single" for unit in units)
+    assert all(unit["group_split_reason"] == "long_continuation_group" for unit in units)
+    assert [unit["protected_source_text"] for unit in units] == [text_a, text_b]
+    assert [unit["item_id"] for unit in pending_translation_items(payload)] == ["a", "b"]
 
 
-def test_large_continuation_group_stays_grouped_even_when_member_count_exceeds_limit() -> None:
+def test_large_continuation_group_is_split_back_to_single_units() -> None:
     payload = []
     for idx in range(4):
         text = f"segment {idx} continues the same paragraph across columns and should stay grouped for coherent translation."
@@ -234,7 +236,8 @@ def test_large_continuation_group_stays_grouped_even_when_member_count_exceeds_l
 
     units = pending_translation_items(payload)
 
-    assert [unit["item_id"] for unit in units] == ["__cg__:wide-continuation"]
-    assert units[0]["continuation_group"] == "cg-wide"
-    assert all(item["translation_unit_kind"] == "group" for item in payload)
-    assert all(not item.get("group_split_reason") for item in payload)
+    assert [unit["item_id"] for unit in units] == [f"m{i}" for i in range(4)]
+    assert all(unit["continuation_group"] == "" for unit in units)
+    assert all(unit["translation_unit_kind"] == "single" for unit in units)
+    assert all(unit["group_split_reason"] == "large_continuation_group" for unit in units)
+    assert [unit["item_id"] for unit in pending_translation_items(payload)] == [f"m{i}" for i in range(4)]

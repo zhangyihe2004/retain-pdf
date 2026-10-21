@@ -25,7 +25,7 @@ from retainpdf_pipeline.render.layout.payload.render_item import seed_render_fie
 from retainpdf_pipeline.render.layout.payload.reading_sort import sort_items_by_reading_order
 from retainpdf_pipeline.render.layout.payload.shared import same_meaningful_render_text
 from retainpdf_pipeline.render.layout.payload.shared import split_protected_text_for_boxes
-from retainpdf_pipeline.render.layout.payload.suspicious_ocr import detect_and_drop_suspicious_ocr_glued_blocks
+from retainpdf_pipeline.render.layout.payload.suspicious_ocr import detect_suspicious_ocr_glued_blocks
 from retainpdf_pipeline.render.layout.typography.geometry import inner_bbox
 from retainpdf_pipeline.render.layout.typography.measurement import bbox_width
 from retainpdf_pipeline.render.semantics.item_view import block_kind
@@ -233,7 +233,7 @@ def prepare_render_payloads_by_page(
         suspicious_total = 0
         for page_idx, items in prepared.items():
             page_font_size, page_line_pitch, page_line_height, density_baseline, page_text_width_med = page_metrics[page_idx]
-            summary = detect_and_drop_suspicious_ocr_glued_blocks(
+            summary = detect_suspicious_ocr_glued_blocks(
                 items,
                 page_idx=page_idx,
                 page_font_size=page_font_size,
@@ -245,7 +245,7 @@ def prepare_render_payloads_by_page(
             suspicious_total += summary["count"]
             for hit in summary["hits"]:
                 print(
-                    "render skip suspicious OCR-glued block "
+                    "render warning suspicious OCR-glued block (text retained) "
                     f"page={hit['page_idx'] + 1} item={hit['item_id']} next={hit['next_item_id']} "
                     f"chars={hit['source_chars']} chars_per_pt={hit['char_height_ratio']:.2f} "
                     f"gap={hit['source_gap_pt']:.1f} overlap={hit['width_overlap_ratio']:.3f} "
@@ -254,9 +254,13 @@ def prepare_render_payloads_by_page(
                     flush=True,
                 )
         if suspicious_total:
-            print(f"render skip suspicious OCR-glued blocks total={suspicious_total}", flush=True)
+            print(f"render warning suspicious OCR-glued blocks total={suspicious_total}; text retained", flush=True)
     finally:
         if source_doc is not None:
             source_doc.close()
 
+    from retainpdf_pipeline.render.layout.typography.cover_geometry import protect_source_cover_regions
+
+    for items in prepared.values():
+        protect_source_cover_regions(items)
     return prepared

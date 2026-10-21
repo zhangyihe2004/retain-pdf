@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from retainpdf_pipeline.translate.core.context import TranslationItemContext
 from retainpdf_pipeline.translate.core.context import build_item_context
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import batch_json_user_prompt
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import direct_typst_batch_user_prompt as _direct_typst_batch_user_prompt
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import group_member_json_user_prompt as _group_member_json_user_prompt
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import protocol_system_prompt
-from retainpdf_pipeline.translate.llm.shared.prompt_protocols import single_user_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import batch_json_user_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import direct_typst_batch_user_prompt as _direct_typst_batch_user_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import group_member_json_user_prompt as _group_member_json_user_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import protocol_system_prompt
+from retainpdf_pipeline.translate.llm.shared.prompt_protocol_router import single_user_prompt
 
 
 def _item_context(item: dict | TranslationItemContext) -> TranslationItemContext:
@@ -29,6 +29,7 @@ def build_messages(
     mode: str = "fast",
     response_style: str = "tagged",
     target_language_name: str = "简体中文",
+    model: str = "",
 ) -> list[dict[str, str]]:
     item_contexts = [_item_context(item) for item in batch]
     direct_typst_mode = any(item.math_mode == "direct_typst" for item in item_contexts)
@@ -39,11 +40,18 @@ def build_messages(
         response_style=response_style,
         target_language_name=target_language_name,
         direct_typst=direct_typst_mode,
+        model=model,
     )
     user_content = (
-        _direct_typst_batch_user_prompt(item_contexts, mode=mode, target_language_name=target_language_name, response_style=response_style)
+        _direct_typst_batch_user_prompt(
+            item_contexts,
+            mode=mode,
+            target_language_name=target_language_name,
+            response_style=response_style,
+            model=model,
+        )
         if direct_typst_mode
-        else batch_json_user_prompt(item_contexts, target_language_name=target_language_name)
+        else batch_json_user_prompt(item_contexts, target_language_name=target_language_name, model=model)
     )
     return _messages(system_prompt, user_content)
 
@@ -55,6 +63,7 @@ def build_single_item_fallback_messages(
     structured_decision: bool = False,
     response_style: str = "plain_text",
     target_language_name: str = "简体中文",
+    model: str = "",
 ) -> list[dict[str, str]]:
     item_context = _item_context(item)
     system_prompt = protocol_system_prompt(
@@ -64,12 +73,14 @@ def build_single_item_fallback_messages(
         response_style=response_style,
         target_language_name=target_language_name,
         direct_typst=item_context.math_mode == "direct_typst",
+        model=model,
         structured_decision=structured_decision,
     )
     user_prompt = single_user_prompt(
         item_context,
         mode=mode,
         response_style=response_style,
+        model=model,
         target_language_name=target_language_name,
         structured_decision=structured_decision,
     )
@@ -81,6 +92,7 @@ def build_group_member_messages(
     domain_guidance: str = "",
     mode: str = "fast",
     target_language_name: str = "简体中文",
+    model: str = "",
 ) -> list[dict[str, str]]:
     item_context = _item_context(item)
     system_prompt = protocol_system_prompt(
@@ -90,8 +102,13 @@ def build_group_member_messages(
         response_style="json",
         target_language_name=target_language_name,
         direct_typst=_item_math_mode(item_context) == "direct_typst",
+        model=model,
     )
     return _messages(
         system_prompt,
-        _group_member_json_user_prompt(item_context, target_language_name=target_language_name),
+        _group_member_json_user_prompt(
+            item_context,
+            target_language_name=target_language_name,
+            model=model,
+        ),
     )

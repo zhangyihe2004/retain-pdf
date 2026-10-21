@@ -114,7 +114,9 @@ class BodyFontInheritanceTests(unittest.TestCase):
         ]
 
         self.assertGreaterEqual(short_block.font_size_pt, min(anchor_fonts) - 0.9)
-        self.assertGreaterEqual(short_block.fit_min_font_size_pt, min(anchor_fonts) - 1.1)
+        self.assertTrue(short_block.fit_flow_text)
+        self.assertEqual(short_block.fit_min_font_size_pt, 0.0)
+        self.assertLessEqual(short_block.fit_max_height_pt, short_block.inner_bbox[3] - short_block.inner_bbox[1])
 
     def test_similar_body_fonts_unify_before_underfill_growth(self):
         items = [

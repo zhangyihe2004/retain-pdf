@@ -110,7 +110,7 @@ def test_body_font_unify_locks_page_candidates_to_single_target() -> None:
     assert fonts == {9.57}
 
 
-def test_collision_keeps_unified_body_font_and_only_compresses_leading() -> None:
+def test_flow_collision_preserves_typography_and_only_limits_space() -> None:
     current = {
         "inner_bbox": [45.0, 490.0, 384.0, 525.0],
         "translated_text": "这里乘积函数是一个新的高斯函数，中心位于某处，并包含多个较长说明。" * 3,
@@ -149,7 +149,8 @@ def test_collision_keeps_unified_body_font_and_only_compresses_leading() -> None
     mark_adjacent_collision_risk([current, nxt])
 
     assert current["font_size_pt"] == 11.17
-    assert current["leading_em"] == 0.56
+    assert current["leading_em"] == 0.72
     assert current["prefer_typst_fit"] is False
     assert current["adjacent_collision_risk"] is False
-    assert current["_body_collision_leading_only"] is True
+    assert current["adjacent_available_height_pt"] == 35.0
+    assert "_body_collision_leading_only" not in current

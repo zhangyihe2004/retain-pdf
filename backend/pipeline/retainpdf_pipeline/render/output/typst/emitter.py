@@ -8,7 +8,7 @@ from retainpdf_pipeline.render.layout.model.block_view import layout_block_to_re
 from retainpdf_pipeline.render.layout.model.models import RenderPageSpec
 from retainpdf_pipeline.render.output.typst import block_config as typst_config
 from retainpdf_pipeline.render.output.typst.fit_helpers import page_spec_fit_helpers
-from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_block
+from retainpdf_pipeline.render.output.typst.block_renderer import build_typst_blocks
 from retainpdf_pipeline.services.pipeline_shared.events import emit_render_page_progress
 
 
@@ -32,9 +32,10 @@ def build_typst_source_from_page_specs(
         lines.append(
             f'#place(top + left, dx: 0pt, dy: 0pt, image("{source_rel}", page: {spec.page_index + 1}, width: {spec.page_width_pt}pt))'
         )
-        for block_index, block in enumerate(spec.blocks):
-            block_id = f"rp{page_offset}_{block.block_id}_{block_index}"
-            lines.append(build_typst_block(block_id, layout_block_to_render_block(block), include_fill=True))
+        lines.append(build_typst_blocks([
+            (f"rp{page_offset}_{block.block_id}_{block_index}", layout_block_to_render_block(block))
+            for block_index, block in enumerate(spec.blocks)
+        ], include_fill=True))
         if page_offset + 1 < len(page_specs):
             lines.append("#pagebreak()")
         emit_render_page_progress(

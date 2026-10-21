@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from retainpdf_pipeline.render.layout.inline_content.core.markdown import build_direct_typst_passthrough_text
+from retainpdf_pipeline.render.layout.inline_content.core.markdown import escape_literal_footnote_markers
 from retainpdf_pipeline.render.layout.inline_content.fallback.placeholder_markdown import build_markdown_from_parts
 
 
@@ -36,8 +37,9 @@ def build_item_render_markdown(
     protected_text: str,
     formula_map: list[dict],
 ) -> str:
-    return build_render_markdown(
+    markdown = build_render_markdown(
         protected_text,
         formula_map,
         math_mode=item_render_math_mode(item),
     )
+    return escape_literal_footnote_markers(item, markdown)

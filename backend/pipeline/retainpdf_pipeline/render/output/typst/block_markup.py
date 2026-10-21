@@ -13,11 +13,13 @@ def typst_single_line_fit_call(
     *,
     font_weight: str,
     justify_text: str,
+    preferred_width_pt: float = 0.0,
 ) -> str:
+    width_arg = f", preferred_width: {preferred_width_pt}pt" if preferred_width_pt > 0 else ""
     return (
         f'pdftr_fit_single_line_markdown({markdown_name}, max_size: {config.max_font_pt}pt, '
         f'min_size: {config.min_font_pt}pt, fit_width: {config.width_pt}pt, '
-        f'fit_height: {config.height_pt}pt, weight: "{font_weight}", justify: {justify_text})'
+        f'fit_height: {config.height_pt}pt, weight: "{font_weight}", justify: {justify_text}{width_arg})'
     )
 
 
@@ -32,12 +34,14 @@ def typst_markdown_fit_call(
     font_weight: str,
     first_line_indent_pt: float,
     justify_text: str,
+    preferred_width_pt: float = 0.0,
 ) -> str:
+    width_arg = f", preferred_width: {preferred_width_pt}pt" if preferred_width_pt > 0 else ""
     return (
         f'pdftr_fit_markdown({markdown_name}, max_size: {max_font_size_pt}pt, '
         f'min_size: {min_font_size_pt}pt, max_leading: {max_leading_em}em, '
         f'min_leading: {min_leading_em}em, fit_height: {fit_height_pt}pt, '
-        f'weight: "{font_weight}", first_line_indent: {first_line_indent_pt}pt, justify: {justify_text})'
+        f'weight: "{font_weight}", first_line_indent: {first_line_indent_pt}pt, justify: {justify_text}{width_arg})'
     )
 
 
